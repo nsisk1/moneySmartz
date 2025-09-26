@@ -786,7 +786,7 @@ class Game:
             return
         min_pay = max(25, cc.balance * 0.05)
         pay = float(input(f"Payment amount (min ${min_pay:.2f}): $"))
-        if pay >= min_pay and pay <= cc.balance and self.player.cash >= pay:
+        if min_pay <= pay <= self.player.cash and pay <= cc.balance:
             self.player.cash -= pay
             cc.pay(pay)
 

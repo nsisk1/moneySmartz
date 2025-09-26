@@ -9,30 +9,33 @@ from moneySmarts.images import get_image_path
 
 DEFAULT_TILE_SIZE = 48
 
+
+def _load_csv(rel_path: str) -> List[List[int]]:
+    path = get_image_path(rel_path)  # reuse path logic even if not images dir
+    rows: List[List[int]] = []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                rows.append([int(tok) for tok in line.split(',')])
+    except FileNotFoundError:
+        # Empty map fallback
+        return [[-1 for _ in range(10)] for _ in range(10)]
+    return rows
+
+
 class TileMap:
     def __init__(self, map_csv: str, tileset_path: str, tile_size: int = DEFAULT_TILE_SIZE):
         self.tile_size = tile_size
-        self.grid: List[List[int]] = self._load_csv(map_csv)
+        self.grid: List[List[int]] = _load_csv(map_csv)
         self.tiles = self._load_tileset(tileset_path, tile_size)
         self.width = len(self.grid[0]) if self.grid else 0
         self.height = len(self.grid)
 
-    def _load_csv(self, rel_path: str) -> List[List[int]]:
-        path = get_image_path(rel_path)  # reuse path logic even if not images dir
-        rows: List[List[int]] = []
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    rows.append([int(tok) for tok in line.split(',')])
-        except FileNotFoundError:
-            # Empty map fallback
-            return [[-1 for _ in range(10)] for _ in range(10)]
-        return rows
-
-    def _load_tileset(self, rel_path: str, tile: int):
+    @staticmethod
+    def _load_tileset(rel_path: str, tile: int):
         path = get_image_path(rel_path)
         try:
             atlas = pygame.image.load(path).convert_alpha()
