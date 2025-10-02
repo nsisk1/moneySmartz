@@ -31,6 +31,7 @@ IMAGES = {
     "ICON_DEBT": "debt_balance.png",
     "ICON_INVEST": "investment.png",
     "ICON_PIGGY": "piggy_bank.png",
+    "LOADING_SCREEN": "money_smarts_welcome.png",  # New: loading/title screen image
 }
 
 # Root assets directory (fonts, audio, etc.)

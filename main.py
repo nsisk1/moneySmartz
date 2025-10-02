@@ -6,11 +6,13 @@ It initializes the game and starts the main game loop.
 """
 
 import sys
+from typing import NoReturn
+
 # --- Python version guard (pygame wheels not yet for 3.14; project targets 3.11/3.12) ---
 if not ((3, 11) <= sys.version_info < (3, 13)):
-    print(f"Unsupported Python version {sys.version.split()[0]} detected.\n"
-          f"Use Python 3.11 or 3.12. (Current pyproject requires >=3.11,<3.13)\n"
-          f"Fix: Install Python 3.12, recreate venv, then: pip install -r requirements.txt")
+    print("Unsupported Python version {sys.version.split()[0]} detected.\n"
+          "Use Python 3.11 or 3.12. (Current pyproject requires >=3.11,<3.13)\n"
+          "Fix: Install Python 3.12, recreate venv, then: pip install -r requirements.txt")
     sys.exit(1)
 
 # Delay pygame import until after version check for clearer messaging
@@ -40,7 +42,56 @@ BLUE = (0, 120, 255)
 LIGHT_BLUE = (100, 180, 255)
 GREEN = (0, 200, 0)
 
-def main():
+def show_loading_screen(screen):
+    """Display the welcome/loading image until the next screen is ready."""
+    from moneySmarts.images import get_image_path
+    img_path = get_image_path("LOADING_SCREEN")
+    try:
+        image = pygame.image.load(img_path)
+        image = pygame.transform.scale(image, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    except Exception:
+        screen.fill((255, 255, 255))
+        pygame.display.flip()
+        return
+    screen.blit(image, (0, 0))
+    pygame.display.flip()
+    # Wait briefly or until a key/mouse event (optional: 1.5 s splash)
+    pygame.time.wait(1500)
+
+def play_intro_video(screen):
+    """Play the welcome video as the loading screen. Falls back to the static image if the video fails."""
+    try:
+        import cv2
+    except ImportError:
+        show_loading_screen(screen)
+        return
+    video_path = 'assets/video/images/money smarts welcome screen.mp4'
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        show_loading_screen(screen)
+        return
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    surf_size = (screen.get_width(), screen.get_height())
+    clock = pygame.time.Clock()
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = cv2.resize(frame, surf_size)
+        surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
+        screen.blit(surf, (0, 0))
+        pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                cap.release()
+                pygame.quit()
+                sys.exit()
+        clock.tick(fps)
+    cap.release()
+
+
+def main() -> None:
     """
     Main function that initializes and runs the game.
     Sets up error logging and handles uncaught exceptions.
@@ -72,14 +123,17 @@ def main():
         gui_manager = GUIManager(game)
         game.gui_manager = gui_manager
 
-        # Set initial screen
+        # Show loading/welcome video (auto-plays, no input required)
+        play_intro_video(screen)
+
+        # After video, show the TitleScreen with buttons
         gui_manager.set_screen(TitleScreen(game))
 
         # Main game loop
         gui_manager.run()
     except GameError as ge:
-        logging.error(f"Game error: {ge}")
-        print(f"A game error occurred: {ge}")
+        logging.error("Game error: {ge}")
+        print("A game error occurred: {ge}")
     except Exception:
         logging.error("Uncaught exception:", exc_info=True)
         print("An unexpected error occurred. Please check money_smarts.log for details.")

@@ -27,28 +27,50 @@ def _load_csv(rel_path: str) -> List[List[int]]:
 
 
 class TileMap:
-    def __init__(self, map_csv: str, tileset_path: str, tile_size: int = DEFAULT_TILE_SIZE):
+    def __init__(self, map_csv: str, tileset_paths: List[str], tile_size: int = DEFAULT_TILE_SIZE):
         self.tile_size = tile_size
         self.grid: List[List[int]] = _load_csv(map_csv)
-        self.tiles = self._load_tileset(tileset_path, tile_size)
+        self.tiles = self._load_tilesets(tileset_paths, tile_size)
         self.width = len(self.grid[0]) if self.grid else 0
         self.height = len(self.grid)
 
+    @classmethod
+    def from_grid(cls, grid: List[List[int]], tileset_paths: List[str], tile_size: int = DEFAULT_TILE_SIZE):
+        """
+        Build a TileMap directly from an in-memory grid and a list of tileset image paths.
+        Each path can be a single-tile image (48x48) or a spritesheet; images are sliced
+        using the same logic as _load_tilesets.
+        """
+        obj = cls.__new__(cls)
+        obj.tile_size = tile_size
+        obj.grid = grid
+        obj.tiles = cls._load_tilesets(tileset_paths, tile_size)
+        obj.width = len(grid[0]) if grid else 0
+        obj.height = len(grid)
+        return obj
+
     @staticmethod
-    def _load_tileset(rel_path: str, tile: int):
-        path = get_image_path(rel_path)
-        try:
-            atlas = pygame.image.load(path).convert_alpha()
-        except Exception:
-            surf = pygame.Surface((tile, tile), pygame.SRCALPHA)
-            surf.fill((200, 0, 200, 255))
-            return [surf]
+    def _load_tilesets(paths: List[str], tile: int):
         tiles = []
-        h = atlas.get_height(); w = atlas.get_width()
-        for y in range(0, h, tile):
-            for x in range(0, w, tile):
-                rect = pygame.Rect(x, y, tile, tile)
-                tiles.append(atlas.subsurface(rect))
+        for path in paths:
+            path = get_image_path(path)
+            try:
+                img = pygame.image.load(path).convert_alpha()
+            except Exception:
+                surf = pygame.Surface((tile, tile), pygame.SRCALPHA)
+                surf.fill((200, 0, 200, 255))
+                tiles.append(surf)
+                continue
+            # If image is exactly tile size, use as single tile
+            if img.get_width() == tile and img.get_height() == tile:
+                tiles.append(img)
+            else:
+                # Slice image into tiles
+                h = img.get_height(); w = img.get_width()
+                for y in range(0, h, tile):
+                    for x in range(0, w, tile):
+                        rect = pygame.Rect(x, y, tile, tile)
+                        tiles.append(img.subsurface(rect))
         return tiles
 
     def draw(self, surface: pygame.Surface, camx: int, camy: int):
@@ -76,4 +98,3 @@ class TileMap:
         return False
 
 __all__ = ["TileMap", "DEFAULT_TILE_SIZE"]
-

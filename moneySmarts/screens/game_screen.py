@@ -78,7 +78,6 @@ class GameScreen(Screen):
         # --- System Control Buttons ---
         self.buttons.extend([
             Button(SCREEN_WIDTH - 220, 100, 90, 40, "Pause", action=self.pause_game),
-            Button(SCREEN_WIDTH - 120, 100, 90, 40, "Play", action=self.play_game),
             Button(SCREEN_WIDTH - 220, 150, 90, 40, "Save", action=self.save_game),
             Button(SCREEN_WIDTH - 120, 150, 90, 40, "Load", action=self.load_game),
             Button(SCREEN_WIDTH - 220, 200, 190, 40, "Quit", action=self.quit_game),

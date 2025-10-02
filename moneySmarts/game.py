@@ -48,6 +48,7 @@ def get_choice(prompt, choices):
     sel = 0
     while sel < 1 or sel > len(choices):
         try:
+            # noinspection PyCompatibility
             sel = int(input(f"Enter choice (1-{len(choices)}): "))
         except ValueError:
             print("Enter a valid number.")

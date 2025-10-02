@@ -65,6 +65,7 @@ class TitleScreen(Screen):
             action=self.confirm_quit_game
         )
         self.buttons = [start_button, load_button, save_button, quit_button]
+
         self.show_confirm = False
         self.confirm_action = None
         self.confirm_message = ""
@@ -265,7 +266,7 @@ class NameInputScreen(Screen):
         self.next_screen = next_screen  # 'intro' or 'overworld'
         # Load background image via image_manager
         self.background_image = None
-        self._background_original = image_manager.load_image('intro_background.png')
+        self._background_original = image_manager.load_image('name_background.png')
         if self._background_original:
             self.background_image = self._background_original
         else:
@@ -343,18 +344,23 @@ class NameInputScreen(Screen):
         else:
             surface.fill(self.bg_color)
         # Title
-        title_surface = self.title_font.render("Enter Your Name", True, BLACK)
-        title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 4))
-        surface.blit(title_surface, title_rect)
         if self.background_image:
             overlay_rect = pygame.Rect(surface.get_width() // 2 - 240, surface.get_height() // 2 - 80, 480, 200)
             overlay = pygame.Surface(overlay_rect.size, pygame.SRCALPHA)
             overlay.fill((255, 255, 255, 140))
             surface.blit(overlay, overlay_rect.topleft)
+            # Move the title text into the top of the gray box
+            title_surface = self.title_font.render("Enter Your Name", True, BLACK)
+            title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 60))
+            surface.blit(title_surface, title_rect)
         else:
             card_rect = pygame.Rect(surface.get_width() // 2 - 220, surface.get_height() // 2 - 70, 440, 180)
             pygame.draw.rect(surface, CARD_BG, card_rect, border_radius=12)
             pygame.draw.rect(surface, CARD_BORDER, card_rect, 2, border_radius=12)
+            # Move the title text into the top of the card
+            title_surface = self.title_font.render("Enter Your Name", True, BLACK)
+            title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 50))
+            surface.blit(title_surface, title_rect)
         # Input
         self.name_input.draw(surface)
         # Buttons
