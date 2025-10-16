@@ -1,18 +1,18 @@
 import pygame
 import os
-import math
+import csv
 
 # Settings
 image_folder = os.path.join('assets', 'images', 'buildings', 'exteriors', 'modernexteriors-win', 'Modern_Exteriors_48x48', 'ME_Theme_Sorter_48x48')
+csv_map_file = os.path.join('assets', 'maps', 'sample_map.csv')
 
 pygame.init()
 display_info = pygame.display.Info()
 screen_width, screen_height = display_info.current_w, display_info.current_h
 screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
 pygame.display.set_caption('MoneySmarts World Explorer')
-font = pygame.font.SysFont(None, 24)
 
-# Load all PNG images from the folder as single tiles
+# Load tile images (first three PNGs for sample)
 image_files = []
 if os.path.exists(image_folder):
     for filename in sorted(os.listdir(image_folder)):
@@ -24,52 +24,43 @@ else:
     pygame.quit()
     exit(1)
 
-if not image_files:
-    print(f"No PNG images found in {image_folder}")
+if len(image_files) < 3:
+    print(f"Not enough PNG images found in {image_folder}")
     pygame.quit()
     exit(1)
 
-# Load images
 images = []
-for img_path in image_files:
+for img_path in image_files[:3]:
     try:
         img = pygame.image.load(img_path).convert_alpha()
         images.append(img)
-        print(f"Loaded: {os.path.basename(img_path)} size: {img.get_width()}x{img.get_height()}")
     except Exception as e:
         print(f"Failed to load {img_path}: {e}")
 
-num_images = len(images)
+# Load CSV map
+tile_map = []
+with open(csv_map_file, newline='') as csvfile:
+    reader = csv.reader(csvfile)
+    for row in reader:
+        tile_map.append([int(cell) for cell in row])
 
-# Determine grid size (try to make it as square as possible)
-grid_cols = math.ceil(math.sqrt(num_images * screen_width / screen_height))
-grid_rows = math.ceil(num_images / grid_cols)
+map_rows = len(tile_map)
+map_cols = len(tile_map[0]) if map_rows > 0 else 0
 
-# Calculate max tile size to fit all images in the grid
-tile_w = screen_width // grid_cols
-tile_h = screen_height // grid_rows
+tile_w = screen_width // map_cols if map_cols else 48
+tile_h = screen_height // map_rows if map_rows else 48
 
-# Main loop
 running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
             running = False
-
     screen.fill((40, 40, 40))
-
-    # Draw images in grid
-    for idx, img in enumerate(images):
-        row = idx // grid_cols
-        col = idx % grid_cols
-        x = col * tile_w
-        y = row * tile_h
-        scaled_img = pygame.transform.smoothscale(img, (tile_w, tile_h))
-        screen.blit(scaled_img, (x, y))
-        # Optionally draw filename or index
-        # label = font.render(str(idx), True, (255, 255, 0))
-        # screen.blit(label, (x + 2, y + 2))
-
+    # Draw map from CSV
+    for row_idx, row in enumerate(tile_map):
+        for col_idx, tile_idx in enumerate(row):
+            if 0 <= tile_idx < len(images):
+                scaled_img = pygame.transform.smoothscale(images[tile_idx], (tile_w, tile_h))
+                screen.blit(scaled_img, (col_idx * tile_w, row_idx * tile_h))
     pygame.display.flip()
-
 pygame.quit()

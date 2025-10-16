@@ -510,3 +510,5 @@ Traceback (most recent call last):
     if os.path.exists(get_image_path(map_csv)) and os.path.exists(get_image_path(tileset)):
                       ^^^^^^^^^^^^^^
 NameError: name 'get_image_path' is not defined
+2025-10-16 17:04:13,782 ERROR root BankAccount withdraw error: Insufficient funds or invalid withdrawal amount.
+2025-10-16 17:04:13,784 ERROR root Game error: {ge}
