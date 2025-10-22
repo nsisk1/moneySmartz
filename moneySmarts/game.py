@@ -1,6 +1,5 @@
 import os
 import random
-import pickle
 import logging
 import sys  # added for interactivity check
 from moneySmarts.models import Player, BankAccount, Card, Loan, Asset
@@ -9,6 +8,7 @@ from moneySmarts.config_manager import Config
 from moneySmarts.exceptions import GameError, BankAccountError
 from moneySmarts.utils import compute_net_worth
 from moneySmarts.quest import QuestManager  # NEW
+from moneySmarts.cloud_storage import get_storage, LocalFileStorage
 
 SAVEGAME_VERSION = 1
 
@@ -42,9 +42,9 @@ def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def get_choice(prompt, choices):
-    print(f"\n{prompt}")
+    print("\n{prompt}")
     for i, c in enumerate(choices):
-        print(f"{i+1}. {c}")
+        print("{i+1}. {c}")
     sel = 0
     while sel < 1 or sel > len(choices):
         try:
@@ -102,10 +102,10 @@ class Game:
                 raise GameError("Name cannot be empty")
             self.player = Player(name)
         except Exception as e:
-            logging.error(f"Init error: {e}")
+            logging.error("Init error: {e}")
             print("Error starting game.")
             return
-        print(f"Welcome, {self.player.name}! You're 16 and beginning your financial journey.")
+        print("Welcome, {self.player.name}! You're 16 and beginning your financial journey.")
         try:
             if get_choice("Open a bank account?", ["Yes", "No"]) == "Yes":
                 self.player.bank_account = BankAccount()
@@ -115,7 +115,7 @@ class Game:
                     self.player.debit_card = Card("Debit")
                     print("Debit card issued.")
         except BankAccountError as e:
-            logging.error(f"Bank error: {e}")
+            logging.error("Bank error: {e}")
         input("Press Enter to begin...")
         self.game_loop()
 
@@ -169,7 +169,7 @@ class Game:
                 loan.make_payment(pay)
             else:
                 self.player.credit_score -= 30
-                print(f"Missed {loan.loan_type} payment.")
+                print("Missed {loan.loan_type} payment.")
         # Credit card minimum
         if self.player.credit_card and self.player.credit_card.balance > 0:
             min_pay = max(25, self.player.credit_card.balance * 0.05)
@@ -214,7 +214,7 @@ class Game:
                 self.player.cash -= amt; paid = True
             if not paid:
                 self.player.credit_score -= 10
-                print(f"Missed bill: {bill['name']}")
+                print("Missed bill: {bill['name']}")
         # Utilities
         for util in self.player.utility_bills:
             amt = util['amount']; paid = False
@@ -226,11 +226,11 @@ class Game:
                 self.player.cash -= amt; paid = True
             if not paid:
                 self.player.credit_score -= 5
-                print(f"Missed utility: {util['name']}")
+                print("Missed utility: {util['name']}")
         # After finances, check quest progress
         newly = self.quests.check_all()
         if newly:
-            self.quest_notifications.extend([f"Quest Completed: {q.title}" for q in newly])
+            self.quest_notifications.extend(["Quest Completed: {q.title}" for q in newly])
             # limit backlog
             self.quest_notifications = self.quest_notifications[-5:]
 
@@ -265,12 +265,12 @@ class Game:
             return
         clear_screen()
         print("\n!"*30)
-        print(f"EVENT: {event['name']}")
+        print("EVENT: {event['name']}")
         print(event['description'])
         if effect > 0:
-            print(f"You gained ${effect}")
+            print("You gained ${effect}")
         else:
-            print(f"You paid ${-effect}")
+            print("You paid ${-effect}")
         print("!"*30)
         # Only prompt for Enter if running interactively (avoid pytest capture OSError)
         if sys.stdin and sys.stdin.isatty():
@@ -315,10 +315,10 @@ class Game:
             # Check if player can afford college
             annual_cost = 20000
             if self.player.cash >= annual_cost:
-                print(f"\nYou pay the first year's tuition of ${annual_cost} in cash.")
+                print("\nYou pay the first year's tuition of ${annual_cost} in cash.")
                 self.player.cash -= annual_cost
             elif self.player.bank_account and self.player.bank_account.balance >= annual_cost:
-                print(f"\nYou pay the first year's tuition of ${annual_cost} from your bank account.")
+                print("\nYou pay the first year's tuition of ${annual_cost} from your bank account.")
                 self.player.bank_account.withdraw(annual_cost)
             else:
                 # Need a student loan
@@ -329,8 +329,8 @@ class Game:
                 loan = Loan("Student", loan_amount, 0.05, 20)  # 5% interest, 20-year term
                 self.player.loans.append(loan)
 
-                print(f"\nYou've taken out a student loan for ${loan_amount}.")
-                print(f"Your monthly payment will be ${loan.monthly_payment:.2f} for 20 years.")
+                print("\nYou've taken out a student loan for ${loan_amount}.")
+                print("Your monthly payment will be ${loan.monthly_payment:.2f} for 20 years.")
 
             self.player.education = "College (In Progress)"
             print("\nYou're now a college student! Your education will take 4 years.")
@@ -342,10 +342,10 @@ class Game:
             # Check if player can afford trade school
             cost = 10000
             if self.player.cash >= cost:
-                print(f"\nYou pay the trade school tuition of ${cost} in cash.")
+                print("\nYou pay the trade school tuition of ${cost} in cash.")
                 self.player.cash -= cost
             elif self.player.bank_account and self.player.bank_account.balance >= cost:
-                print(f"\nYou pay the trade school tuition of ${cost} from your bank account.")
+                print("\nYou pay the trade school tuition of ${cost} from your bank account.")
                 self.player.bank_account.withdraw(cost)
             else:
                 # Need a student loan
@@ -355,8 +355,8 @@ class Game:
                 loan = Loan("Student", cost, 0.05, 10)  # 5% interest, 10-year term
                 self.player.loans.append(loan)
 
-                print(f"\nYou've taken out a student loan for ${cost}.")
-                print(f"Your monthly payment will be ${loan.monthly_payment:.2f} for 10 years.")
+                print("\nYou've taken out a student loan for ${cost}.")
+                print("Your monthly payment will be ${loan.monthly_payment:.2f} for 10 years.")
 
             self.player.education = "Trade School"
             print("\nYou're now a trade school student! Your education will take 2 years.")
@@ -382,7 +382,7 @@ class Game:
         self.player.credit_score += 20  # Education boosts credit score
 
         print("\nYour credit score has increased due to your educational achievement.")
-        print(f"Your credit score is now {self.player.credit_score}.")
+        print("Your credit score is now {self.player.credit_score}.")
 
         # Offer job opportunities
         print("\nWith your new degree, you have access to better job opportunities.")
@@ -421,13 +421,13 @@ class Game:
         # Display job options
         print("\nThe following job opportunities are available to you:")
         for i, job in enumerate(job_options):
-            print(f"{i+1}. {job['title']} - ${job['salary']}/year")
+            print("{i+1}. {job['title']} - ${job['salary']}/year")
 
         # Get player choice
         choice = 0
         while choice < 1 or choice > len(job_options):
             try:
-                choice = int(input(f"\nWhich job would you like to take? (1-{len(job_options)}): "))
+                choice = int(input("\nWhich job would you like to take? (1-{len(job_options)}): "))
             except ValueError:
                 print("Please enter a valid number.")
 
@@ -436,8 +436,8 @@ class Game:
         self.player.job = selected_job["title"]
         self.player.salary = selected_job["salary"]
 
-        print(f"\nCongratulations! You are now a {self.player.job} earning ${self.player.salary}/year.")
-        print(f"Your monthly income is ${self.player.salary/12:.2f}.")
+        print("\nCongratulations! You are now a {self.player.job} earning ${self.player.salary}/year.")
+        print("Your monthly income is ${self.player.salary/12:.2f}.")
 
         input("\nPress Enter to continue...")
 
@@ -462,20 +462,20 @@ class Game:
 
             print("\nHere are your car options:")
             for i, car in enumerate(car_options):
-                print(f"{i+1}. {car['name']} - ${car['value']}")
+                print("{i+1}. {car['name']} - ${car['value']}")
 
             # Get player choice
             car_choice = 0
             while car_choice < 1 or car_choice > len(car_options):
                 try:
-                    car_choice = int(input(f"\nWhich car would you like to buy? (1-{len(car_options)}): "))
+                    car_choice = int(input("\nWhich car would you like to buy? (1-{len(car_options)}): "))
                 except ValueError:
                     print("Please enter a valid number.")
 
             selected_car = car_options[car_choice-1]
 
             # Payment options
-            print(f"\nYou've selected the {selected_car['name']} for ${selected_car['value']}.")
+            print("\nYou've selected the {selected_car['name']} for ${selected_car['value']}.")
             print("How would you like to pay?")
 
             payment_options = ["Cash"]
@@ -487,10 +487,10 @@ class Game:
 
             if payment_choice == "Cash" and self.player.cash >= selected_car['value']:
                 self.player.cash -= selected_car['value']
-                print(f"\nYou paid ${selected_car['value']} in cash for your new car.")
+                print("\nYou paid ${selected_car['value']} in cash for your new car.")
             elif payment_choice == "Bank Account":
                 self.player.bank_account.withdraw(selected_car['value'])
-                print(f"\nYou paid ${selected_car['value']} from your bank account for your new car.")
+                print("\nYou paid ${selected_car['value']} from your bank account for your new car.")
             else:  # Auto Loan
                 # Determine loan terms based on credit score
                 if self.player.credit_score >= 700:
@@ -503,13 +503,14 @@ class Game:
                 loan = Loan("Auto", selected_car['value'], interest_rate, 5)  # 5-year auto loan
                 self.player.loans.append(loan)
 
-                print(f"\nYou've taken out an auto loan for ${selected_car['value']}.")
-                print(f"Your interest rate is {interest_rate*100:.1f}% based on your credit score of {self.player.credit_score}.")
-                print(f"Your monthly payment will be ${loan.monthly_payment:.2f} for 5 years.")
+                print("\nYou've taken out an auto loan for ${selected_car['value']}.")
+                print(
+                    "Your interest rate is {interest_rate*100:.1f}% based on your credit score of {self.player.credit_score}.")
+                print("Your monthly payment will be ${loan.monthly_payment:.2f} for 5 years.")
 
             # Add car to assets
             self.player.assets.append(Asset("Car", selected_car['name'], selected_car['value']))
-            print(f"\nCongratulations on your new {selected_car['name']}!")
+            print("\nCongratulations on your new {selected_car['name']}!")
 
         else:
             print("\nYou've decided not to buy a car at this time.")
@@ -537,13 +538,13 @@ class Game:
 
             print("\nHere are your housing options:")
             for i, house in enumerate(house_options):
-                print(f"{i+1}. {house['name']} - ${house['value']}")
+                print("{i+1}. {house['name']} - ${house['value']}")
 
             # Get player choice
             house_choice = 0
             while house_choice < 1 or house_choice > len(house_options):
                 try:
-                    house_choice = int(input(f"\nWhich house would you like to buy? (1-{len(house_options)}): "))
+                    house_choice = int(input("\nWhich house would you like to buy? (1-{len(house_options)}): "))
                 except ValueError:
                     print("Please enter a valid number.")
 
@@ -553,8 +554,8 @@ class Game:
             down_payment = selected_house['value'] * 0.2
             loan_amount = selected_house['value'] - down_payment
 
-            print(f"\nYou've selected the {selected_house['name']} for ${selected_house['value']}.")
-            print(f"A standard mortgage requires a 20% down payment of ${down_payment}.")
+            print("\nYou've selected the {selected_house['name']} for ${selected_house['value']}.")
+            print("A standard mortgage requires a 20% down payment of ${down_payment}.")
 
             # Check if player can afford down payment
             if self.player.cash < down_payment and (not self.player.bank_account or self.player.bank_account.balance < down_payment):
@@ -574,10 +575,10 @@ class Game:
 
             if payment_choice == "Cash":
                 self.player.cash -= down_payment
-                print(f"\nYou paid ${down_payment} in cash for your down payment.")
+                print("\nYou paid ${down_payment} in cash for your down payment.")
             else:  # Bank Account
                 self.player.bank_account.withdraw(down_payment)
-                print(f"\nYou paid ${down_payment} from your bank account for your down payment.")
+                print("\nYou paid ${down_payment} from your bank account for your down payment.")
 
             # Determine mortgage terms based on credit score
             if self.player.credit_score >= 750:
@@ -592,13 +593,14 @@ class Game:
             loan = Loan("Mortgage", loan_amount, interest_rate, 30)  # 30-year mortgage
             self.player.loans.append(loan)
 
-            print(f"\nYou've taken out a mortgage for ${loan_amount}.")
-            print(f"Your interest rate is {interest_rate*100:.1f}% based on your credit score of {self.player.credit_score}.")
-            print(f"Your monthly payment will be ${loan.monthly_payment:.2f} for 30 years.")
+            print("\nYou've taken out a mortgage for ${loan_amount}.")
+            print(
+                "Your interest rate is {interest_rate*100:.1f}% based on your credit score of {self.player.credit_score}.")
+            print("Your monthly payment will be ${loan.monthly_payment:.2f} for 30 years.")
 
             # Add house to assets
             self.player.assets.append(Asset("House", selected_house['name'], selected_house['value']))
-            print(f"\nCongratulations on your new {selected_house['name']}!")
+            print("\nCongratulations on your new {selected_house['name']}!")
 
         else:
             print("\nYou've decided not to buy a house at this time.")
@@ -621,14 +623,14 @@ class Game:
             self.player.family.append({"relation": "Spouse", "age": spouse_age})
 
             print("\nCongratulations! You've gotten married.")
-            print(f"Your spouse is {spouse_age} years old.")
+            print("Your spouse is {spouse_age} years old.")
 
             # Chance for dual income
             if random.random() < 0.7:  # 70% chance of spouse having a job
                 spouse_income = int(self.player.salary * random.uniform(0.5, 1.5))  # Spouse income relative to player
                 self.player.salary += spouse_income  # Add spouse income to family income
-                print(f"Your spouse has a job that adds ${spouse_income}/year to your family income.")
-                print(f"Your combined family income is now ${self.player.salary}/year.")
+                print("Your spouse has a job that adds ${spouse_income}/year to your family income.")
+                print("Your combined family income is now ${self.player.salary}/year.")
             else:
                 print("Your spouse doesn't currently have a job.")
 
@@ -639,11 +641,11 @@ class Game:
                 num_children = random.randint(1, 3)  # Random number of children
 
                 for i in range(num_children):
-                    child_name = f"Child {i+1}"  # Placeholder name
+                    child_name = "Child {i+1}"  # Placeholder name
                     child_age = 0  # Newborn
                     self.player.family.append({"relation": "Child", "name": child_name, "age": child_age})
 
-                print(f"\nCongratulations! You now have {num_children} {'child' if num_children == 1 else 'children'}.")
+                print("\nCongratulations! You now have {num_children} {'child' if num_children == 1 else 'children'}.")
                 print("Having children will increase your monthly expenses.")
 
                 # Adjust expenses for children
@@ -657,27 +659,27 @@ class Game:
     # --- Status & actions (text mode) ---
     def display_status(self):
         clear_screen()
-        print(f"MONTH: {self.current_month}/YEAR: {2023 + self.current_year} | AGE: {self.player.age}")
+        print("MONTH: {self.current_month}/YEAR: {2023 + self.current_year} | AGE: {self.player.age}")
         print("-"*60)
-        print(f"Name: {self.player.name}  Education: {self.player.education}")
+        print("Name: {self.player.name}  Education: {self.player.education}")
         job = self.player.job or 'Unemployed'
-        print(f"Job: {job}  Salary: ${self.player.salary}/yr" if self.player.job else f"Job: {job}")
-        print(f"Cash: ${self.player.cash:.2f}")
+        print("Job: {job}  Salary: ${self.player.salary}/yr" if self.player.job else "Job: {job}")
+        print("Cash: ${self.player.cash:.2f}")
         if self.player.bank_account:
-            print(f"Checking/Savings: ${self.player.bank_account.balance:.2f} ({self.player.bank_account.account_type})")
+            print("Checking/Savings: ${self.player.bank_account.balance:.2f} ({self.player.bank_account.account_type})")
         if self.player.credit_card:
-            print(f"Credit Card: ${self.player.credit_card.balance:.2f}/{self.player.credit_card.limit:.2f}")
-        print(f"Credit Score: {self.player.credit_score}")
+            print("Credit Card: ${self.player.credit_card.balance:.2f}/{self.player.credit_card.limit:.2f}")
+        print("Credit Score: {self.player.credit_score}")
         if self.player.loans:
             print("Loans:")
             for ln in self.player.loans:
-                print(f"  {ln.loan_type}: ${ln.current_balance:.2f} @ ${ln.monthly_payment:.2f}/mo")
+                print("  {ln.loan_type}: ${ln.current_balance:.2f} @ ${ln.monthly_payment:.2f}/mo")
         if self.player.assets:
             print("Assets:")
             for asset in self.player.assets:
-                print(f"  {asset.name}: ${asset.current_value:.2f} ({asset.condition})")
+                print("  {asset.name}: ${asset.current_value:.2f} ({asset.condition})")
         nw = compute_net_worth(self.player)
-        print(f"Net Worth: ${nw:.2f}")
+        print("Net Worth: ${nw:.2f}")
         print("-"*60)
 
     def get_player_action(self):
@@ -703,7 +705,7 @@ class Game:
         elif self.player.job and random.random() < 0.1:
             actions.append("Job Search")
         for i,a in enumerate(actions):
-            print(f"{i+1}. {a}")
+            print("{i+1}. {a}")
         sel = 0
         while sel < 1 or sel > len(actions):
             try:
@@ -754,7 +756,7 @@ class Game:
 
     def view_bank_account(self):
         ba = self.player.bank_account
-        print(f"Type: {ba.account_type} Balance: ${ba.balance:.2f}")
+        print("Type: {ba.account_type} Balance: ${ba.balance:.2f}")
 
     def deposit_to_bank(self):
         amt = float(input("Deposit amount: $"))
@@ -779,21 +781,21 @@ class Game:
 
     def view_credit_card(self):
         cc = self.player.credit_card
-        print(f"Credit Card Balance: ${cc.balance:.2f} / Limit ${cc.limit:.2f}")
+        print("Credit Card Balance: ${cc.balance:.2f} / Limit ${cc.limit:.2f}")
 
     def pay_credit_card(self):
         cc = self.player.credit_card
         if cc.balance <= 0:
             return
         min_pay = max(25, cc.balance * 0.05)
-        pay = float(input(f"Payment amount (min ${min_pay:.2f}): $"))
+        pay = float(input("Payment amount (min ${min_pay:.2f}): $"))
         if min_pay <= pay <= self.player.cash and pay <= cc.balance:
             self.player.cash -= pay
             cc.pay(pay)
 
     def view_loans(self):
         for ln in self.player.loans:
-            print(f"{ln.loan_type}: ${ln.current_balance:.2f} / ${ln.monthly_payment:.2f}/mo")
+            print("{ln.loan_type}: ${ln.current_balance:.2f} / ${ln.monthly_payment:.2f}/mo")
 
     def make_extra_loan_payment(self):
         if not self.player.loans:
@@ -806,7 +808,7 @@ class Game:
 
     def view_assets(self):
         for a in self.player.assets:
-            print(f"{a.name}: ${a.current_value:.2f} ({a.condition})")
+            print("{a.name}: ${a.current_value:.2f} ({a.condition})")
 
     def look_for_job(self):
         # Simple job assignment stub
@@ -818,7 +820,7 @@ class Game:
         job = random.choice(options)
         self.player.job = job['title']
         self.player.salary = job['salary']
-        print(f"New job: {job['title']} at ${job['salary']}/yr")
+        print("New job: {job['title']} at ${job['salary']}/yr")
 
     # --- GUI support methods ---
     def check_life_stage_events_gui(self):
@@ -845,8 +847,8 @@ class Game:
 
     def end_game(self, reason):
         clear_screen()
-        print(f"GAME OVER - {reason}")
-        print(f"Final Net Worth: ${compute_net_worth(self.player):.2f}")
+        print("GAME OVER - {reason}")
+        print("Final Net Worth: ${compute_net_worth(self.player):.2f}")
         self.game_over = True
 
     def end_game_gui(self, reason):
@@ -856,7 +858,7 @@ class Game:
             if self.gui_manager:
                 self.gui_manager.set_screen(EndGameScreen(self, reason))
         except Exception as e:
-            logging.debug(f"GUI end screen unavailable: {e}")
+            logging.debug("GUI end screen unavailable: {e}")
 
     # --- Persistence ---
     def _serialize_state(self):
@@ -884,22 +886,60 @@ class Game:
         self.quest_notifications = data.get('quest_notifications', [])
 
     def save_state(self, filename="savegame.dat"):
+        """Saves the current game state, trying cloud then local storage."""
+        payload = {'version': SAVEGAME_VERSION, 'game_state': self._serialize_state()}
+        storage = get_storage()
         try:
-            with open(filename, 'wb') as f:
-                pickle.dump({'version': SAVEGAME_VERSION, 'game_state': self._serialize_state()}, f)
+            storage.save(payload, filename=filename)
+            logging.info("Game state saved to {0}.".format(type(storage).__name__))
         except Exception as e:
-            logging.error(f"Save failed: {e}")
+            logging.error("Save failed with primary backend {0}: {1}".format(type(storage).__name__, e))
+            if not isinstance(storage, LocalFileStorage):
+                logging.info("Attempting fallback to local storage.")
+                try:
+                    fallback_storage = LocalFileStorage()
+                    fallback_storage.save(payload, filename=filename)
+                    logging.info("Game state saved to local fallback.")
+                except Exception as e2:
+                    logging.error("Local save fallback also failed: {0}".format(e2))
+                    # Chain removed for compatibility with some static checkers
+                    raise GameError("Failed to save game to both cloud and local storage.")
+            else:
+                raise GameError("Failed to save game to local storage.")
 
     def load_state(self, filename="savegame.dat"):
-        if not os.path.exists(filename) or os.path.getsize(filename) == 0:
-            print("No valid save file.")
-            return
+        """Loads the game state, trying cloud then local storage."""
+        storage = get_storage()
+        data = None
         try:
-            with open(filename, 'rb') as f:
-                data = pickle.load(f)
-            self._deserialize_state(data['game_state'])
+            data = storage.load(filename=filename)
+            logging.info("Game state loaded from {0}.".format(type(storage).__name__))
         except Exception as e:
-            logging.error(f"Load failed: {e}")
+            logging.error("Load failed with primary backend {0}: {1}".format(type(storage).__name__, e))
+            if not isinstance(storage, LocalFileStorage):
+                logging.info("Attempting fallback to local storage.")
+                try:
+                    fallback_storage = LocalFileStorage()
+                    data = fallback_storage.load(filename=filename)
+                    logging.info("Game state loaded from local fallback.")
+                except Exception as e2:
+                    logging.error("Local load fallback also failed: {0}".format(e2))
+                    raise GameError("Failed to load game from both cloud and local storage.")
+            else:
+                raise GameError("Failed to load game from local storage.")
+
+        if not data:
+            raise GameError("No valid save file found.")
+
+        self._deserialize_state(data['game_state'])
+        # If we have a GUI manager, switch to the in-game screen so the
+        # loaded player's state is immediately visible to the user.
+        if getattr(self, 'gui_manager', None):
+            try:
+                from moneySmarts.screens.game_screen import GameScreen
+                self.gui_manager.set_screen(GameScreen(self))
+            except Exception:
+                logging.exception("Failed to set GameScreen after loading state")
 
     # --- Control ---
     def quit(self):
@@ -914,4 +954,4 @@ class Game:
                 from moneySmarts.screens.base_screens import TitleScreen
                 self.gui_manager.set_screen(TitleScreen(self))
             except Exception as e:
-                logging.error(f"Restart screen failed: {e}")
+                logging.error("Restart screen failed: {e}")

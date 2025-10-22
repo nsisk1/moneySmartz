@@ -63,7 +63,7 @@ class ImageManager:
         self._preload_thread.start()
 
     def preload_status(self) -> Tuple[int,int]:
-        return (self._preload_progress, self._preload_total)
+        return self._preload_progress, self._preload_total
 
     # ---------------- Core loading ----------------
     def _ensure_display(self):

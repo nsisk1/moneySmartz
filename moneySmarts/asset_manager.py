@@ -21,7 +21,7 @@ class AssetManager:
             self.images[key] = image
             return image
         except Exception as e:
-            logging.error(f"Failed to load image '{full_path}': {e}")
+            logging.error("Failed to load image '{}': {}".format(full_path, e))
             return None
 
     def get_image(self, key):
@@ -36,7 +36,7 @@ class AssetManager:
             self.sounds[key] = sound
             return sound
         except Exception as e:
-            logging.error(f"Failed to load sound '{full_path}': {e}")
+            logging.error("Failed to load sound '{}': {}".format(full_path, e))
             return None
 
     def get_sound(self, key):
@@ -47,13 +47,12 @@ class AssetManager:
         try:
             font = pygame.font.Font(full_path, size)
             if key is None:
-                key = f"{path}:{size}"
+                key = "{}:{}".format(path, size)
             self.fonts[key] = font
             return font
         except Exception as e:
-            logging.error(f"Failed to load font '{full_path}': {e}")
+            logging.error("Failed to load font '{}': {}".format(full_path, e))
             return None
 
     def get_font(self, key):
         return self.fonts.get(key)
-

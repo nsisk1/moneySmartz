@@ -43,11 +43,7 @@ class GameScreen(Screen):
             SCREEN_WIDTH - 220, SCREEN_HEIGHT - 60, 200, 50,
             "Continue to Next Month", action=self.continue_to_next_month)
         self.buttons.append(continue_button)
-        # Explore world button moved to bottom-left
-        explore_world_button = Button(
-            20, SCREEN_HEIGHT - 60, 200, 50,
-            "Explore World", action=self.open_overworld)
-        self.buttons.append(explore_world_button)
+        # (Explorer/Overworld mode removed) -- no explore button
         if not self.game.player:
             return
         # --- Banking Menu Button ---
@@ -482,7 +478,6 @@ class GameScreen(Screen):
         from moneySmarts.screens.inventory_screen import InventoryScreen
         self.game.gui_manager.set_screen(InventoryScreen(self.game))
 
-    def open_overworld(self):
-        """Switch to the overworld exploration screen."""
-        from moneySmarts.screens.overworld_screen import OverworldScreen
-        self.game.gui_manager.set_screen(OverworldScreen(self.game))
+    # Overworld/explorer mode removed: the method that used to switch to the
+    # overworld screen was intentionally removed. Any attempt to call it will
+    # raise an AttributeError (method not present).

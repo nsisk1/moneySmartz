@@ -1,5 +1,7 @@
 import pygame
 import os
+
+from pygame.surface import Surface
 from pygame.locals import *
 from moneySmarts.constants import *
 from moneySmarts.sound_manager import SoundManager
@@ -165,11 +167,9 @@ class ConfirmationPopup:
                 return True  # Block further event handling
         return False
 
-    def draw(self, surface):
-        # Dim background
-        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))
-        surface.blit(overlay, (0, 0))
+    def draw(self, surface: Surface) -> None:
+        # NOTE: translucent background overlay removed per UI cleanup request.
+        # The popup box will be drawn directly on top of the current screen.
         # Popup box
         draw_rounded_rect(surface, CARD_BG, self.rect, radius=12)
         pygame.draw.rect(surface, CARD_BORDER, self.rect, 2, border_radius=12)
@@ -261,12 +261,12 @@ class GUIManager:
         if os.path.exists(startup_song_path):
             self.sound_manager.load_music(startup_song_path, 'startup_song')
         else:
-            print(f"Warning: Sound file not found at {startup_song_path}")
+            print("Warning: Sound file not found at {}".format(startup_song_path))
 
     def set_screen(self, screen):
         """Set the current screen to be displayed."""
         self.current_screen = screen
-        print(f"[DEBUG] set_screen called: switched to {type(screen).__name__}")
+        print("[DEBUG] set_screen called: switched to {}".format(type(screen).__name__))
         # Call on_enter if present
         if hasattr(screen, 'on_enter') and callable(screen.on_enter):
             screen.on_enter()

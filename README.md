@@ -19,7 +19,7 @@ MoneySmarts is an educational financial life simulator game. Players make real-w
 - Family planning and life events
 - Recurring bills and budgeting
 - Pixel art graphics and engaging UI
-- Save/load game progress
+- Save/load game progress (local or cloud via Firebase)
 - Hot-swappable images and Unity export support
 
 ## How to Play
@@ -98,6 +98,44 @@ python -m venv .venv
 # or on Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -e .[dev]
 ```
+
+## Cloud Saves (Firebase)
+MoneySmarts can save/load game progress to the cloud using Firebase Realtime Database. This enables playing on multiple machines/platforms and keeping your progress in sync.
+
+Quick start:
+- Copy .env.example to .env and fill the values.
+- Install dependencies: pip install -r requirements.txt
+- Ensure your Firebase Realtime Database is created and you know its base URL.
+- Option A (public test only): Set your DB rules temporarily to allow read/write to the chosen path for testing. Not recommended for production.
+- Option B (recommended): Use authenticated access. Provide FIREBASE_AUTH_TOKEN as a user ID token or database secret.
+
+Environment variables (via .env or OS environment):
+- CLOUD_BACKEND: auto | firebase | local (auto uses Firebase if FIREBASE_DB_URL is set)
+- FIREBASE_DB_URL: e.g. https://your-project-id.firebaseio.com
+- FIREBASE_PATH: path namespace (default /moneySmarts/saves)
+- FIREBASE_AUTH_TOKEN: token/secret if your rules require auth
+- CLOUD_SAVE_KEY: optional override for the save slot key
+
+How it works:
+- The game serializes state and, if Firebase is configured, writes to {FIREBASE_DB_URL}{FIREBASE_PATH}/{key}.json
+- Data is stored as a base64-encoded pickle blob for full compatibility with the existing save format.
+- If cloud save fails or is not configured, the game falls back to local file savegame.dat.
+
+Multi-platform notes:
+- This project runs anywhere Python and Pygame are supported (Windows, macOS, Linux). Cloud saves work the same as long as environment variables are set.
+- We automatically load a .env file if present (via python-dotenv) so you can keep per-machine settings without changing code.
+
+Testing locally without Firebase:
+- Do nothing; saves will continue to use local files (savegame.dat, savegame_slot1.dat, etc.).
+
+Enabling Firebase cloud saves:
+1. Create a Firebase project and enable Realtime Database.
+2. Copy .env.example to .env and set FIREBASE_DB_URL to your database URL.
+3. Optionally set FIREBASE_AUTH_TOKEN if your rules require auth.
+4. Run the game normally: python main.py
+5. Use in-game Save/Load; your save will sync through Firebase.
+
+Security: If you expose your database publicly for testing, ensure you revert rules to secure settings. Prefer using authenticated access in production.
 
 ## Running Tests
 After environment setup:

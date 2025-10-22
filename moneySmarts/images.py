@@ -7,6 +7,7 @@ import os
 
 IMAGES = {
     "TITLE_BG": "title_background.jpg",
+     # Reverted: restore the original bank background filename
     "BANK_BG": "BankDetails-0004.png",
     "CARD_IMAGE": "card_image.png",
     "DEBIT_BG": "debit_background.png",
