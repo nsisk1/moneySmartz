@@ -212,6 +212,10 @@ class BankDetailsScreen(Screen):
         from moneySmarts.screens.game_screen import GameScreen
         self.game.gui_manager.set_screen(GameScreen(self.game))
 
+    def handle_events(self, events):
+        """Handle pygame events for this screen."""
+        super().handle_events(events)
+
     def draw(self, surface):
         """Draw the bank details screen."""
         # Background
