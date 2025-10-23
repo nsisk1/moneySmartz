@@ -4,19 +4,13 @@ from moneySmarts.ui import Screen, Button, draw_vertical_gradient
 from moneySmarts.screens.financial_screens import DepositScreen, WithdrawScreen, BankAccountScreen, SavingsDetailsScreen, BankDetailsScreen
 import os
 import logging
-from moneySmarts.models import BankAccount  # added import
+from moneySmarts.models import BankAccount
 from moneySmarts.images import get_image_path
 
-# Module-level record of the background path used (for debugging)
 _BANK_BACKGROUND_PATH = None
+_BANK_BACKGROUND_SURFACES = {}
+_GRADIENT_CACHE = {}
 
-# Module-level cached surfaces (kept None until loaded via pygame when it's safe)
-_BANK_BACKGROUND_SURFACES = {}  # map (w,h) -> surface
-
-# Module-level cached gradient surfaces
-_GRADIENT_CACHE = {}  # key: (w,h,top,bottom,alpha) -> surface
-
-# Local ATM color palette (kept here to avoid changing global constants)
 ATM_PANEL = (30, 30, 30)
 ATM_BEZEL = (18, 18, 18)
 ATM_SCREEN_BG = (8, 18, 36)
@@ -25,19 +19,10 @@ ATM_KEY = (70, 70, 70)
 ATM_KEY_HOVER = PRIMARY_HOVER if 'PRIMARY_HOVER' in globals() else (100, 100, 100)
 ATM_ACCENT = (200, 200, 200)
 
-# Helper: find a bank interior image path (prefer the canonical BANK_BG from images.py)
 def _find_bank_interior_path():
-    """Resolve the canonical bank background via moneySmarts.images.get_image_path.
-
-    This keeps image selection centralized: change `IMAGES['BANK_BG']` in
-    `moneySmarts/images.py` and this screen will pick it up.
-    Returns the resolved filesystem path or None.
-    """
     global _BANK_BACKGROUND_PATH
     try:
         cand = get_image_path('BANK_BG')
-        # get_image_path returns the canonical candidate path even if missing;
-        # only use it if the file actually exists on disk.
         if isinstance(cand, str) and os.path.exists(cand):
             _BANK_BACKGROUND_PATH = cand
             logging.info("Using BANK_BG background at %s", cand)
@@ -51,16 +36,7 @@ def _find_bank_interior_path():
         _BANK_BACKGROUND_PATH = None
         return None
 
-# Helper: actually load and scale the image using pygame (deferred until display init)
 def _load_image_from_path(path, size):
-    """Load and scale an image for the given size; cache per-size to support resizing.
-
-    Args:
-        path (str): filesystem path to the image
-        size (tuple): (width, height) target size
-    Returns:
-        pygame.Surface or None
-    """
     if not path:
         return None
     key = tuple(size)
@@ -76,31 +52,18 @@ def _load_image_from_path(path, size):
             img = pygame.transform.smoothscale(img, key)
         _BANK_BACKGROUND_SURFACES[key] = img
         logging.info("Loaded bank interior surface from %s for size %s", path, key)
-        print("[DEBUG] Loaded bank interior surface from {} for size {}".format(path, key))
         return img
     except Exception as e:
         logging.warning("Failed to load bank interior image %s: %s", path, e)
-        print("[DEBUG] Failed to load bank interior image {}: {}".format(path, e))
         _BANK_BACKGROUND_SURFACES[key] = None
         return None
 
 def _vertical_gradient_surface(size, top_color, bottom_color, alpha=255):
-    """Create (and cache) a vertical gradient surface with per-pixel RGB interpolation.
-
-    Args:
-        size (tuple): (w, h)
-        top_color (tuple): (r,g,b) top color
-        bottom_color (tuple): (r,g,b) bottom color
-        alpha (int): overall alpha (0-255)
-    Returns:
-        pygame.Surface
-    """
     key = (size, top_color, bottom_color, alpha)
     if key in _GRADIENT_CACHE:
         return _GRADIENT_CACHE[key]
     w, h = size
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
-    # Avoid division by zero
     if h <= 1:
         r, g, b = top_color
         surf.fill((r, g, b, alpha))
@@ -118,14 +81,9 @@ def _vertical_gradient_surface(size, top_color, bottom_color, alpha=255):
     return surf
 
 class BankScreen(Screen):
-    """
-    Main bank screen with banking options and buttons.
-    The visual presentation is styled to look like an ATM front with a bezel, screen area and soft-keys.
-    """
     play_startup_music = False
     def __init__(self, game):
         super(BankScreen, self).__init__(game)
-        # Fonts
         try:
             font_path = os.path.join(ASSETS_DIR, 'fonts', 'pixelated_font.ttf')
             self.title_font = pygame.font.Font(font_path, 48)
@@ -135,23 +93,15 @@ class BankScreen(Screen):
             self.title_font = pygame.font.SysFont('Arial', 48, bold=True)
             self.balance_font = pygame.font.SysFont('Arial', 28, bold=True)
             self.text_font = pygame.font.SysFont('Arial', 24)
-        # Debug/small font to show background path
         self.debug_font = pygame.font.SysFont('Arial', 14)
         self.buttons = []
-        # create_buttons uses screen dimensions to layout softkeys
         self.create_buttons()
         self.status_message = None
         self.status_color = WHITE
-
-        # Find the candidate bank interior path but do NOT load it yet.
         _find_bank_interior_path()
-        # Screen-level background surface will be lazy-loaded on first draw
         self.background = None
 
     def create_buttons(self):
-        """Create a simple vertical list of buttons positioned at the right side of the main content area.
-        This matches the original bank screen layout where menu actions were listed, not soft-keys.
-        """
         button_specs = [
             ("Deposit", self.go_to_deposit),
             ("Withdraw", self.go_to_withdraw),
@@ -213,7 +163,6 @@ class BankScreen(Screen):
         self.game.gui_manager.set_screen(GameScreen(self.game))
 
     def handle_events(self, events):
-        # Handle ESC to go back to the game screen
         for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.go_back()
@@ -221,75 +170,53 @@ class BankScreen(Screen):
         super(BankScreen, self).handle_events(events)
 
     def on_enter(self):
-        """Called when the GUI manager activates this screen - ensure the background is loaded for current window size."""
         try:
             size = self.game.gui_manager.screen.get_size()
         except Exception:
             size = (SCREEN_WIDTH, SCREEN_HEIGHT)
-        # Avoid using a background image for this screen; use the project's gradient.
         _find_bank_interior_path()
         self.background = None
 
     def draw(self, surface):
-        """Restore the pre-ATM layout: draw the bank background (if available) and overlay UI.
-        This returns to the previous visual where a bank interior background image fills the screen.
-        """
         sw, sh = surface.get_size()
-
-        # Prefer a real bank interior image if one is available on disk. Load lazily and cache
-        # per-size via _load_image_from_path so resizing is handled.
         try:
-            # Only call os.path.exists if we actually have a string path (avoids static-type warnings)
             if isinstance(_BANK_BACKGROUND_PATH, str) and os.path.exists(_BANK_BACKGROUND_PATH):
-                # Only reload when size changes or background not set
                 if not self.background or self.background.get_size() != (sw, sh):
                     loaded = _load_image_from_path(_BANK_BACKGROUND_PATH, (sw, sh))
-                    # _load_image_from_path may return None on failure
                     self.background = loaded
                 if self.background:
-                    # Draw the background image first
                     try:
                         surface.blit(self.background, (0, 0))
-                        # Apply a semi-opaque gradient overlay to ensure UI contrast
                         overlay = _vertical_gradient_surface((sw, sh), BG_TOP, BG_BOTTOM, alpha=140)
                         surface.blit(overlay, (0, 0))
                     except Exception:
-                        # If blitting fails, fall back to the standard gradient
                         draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
                 else:
                     draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
             else:
-                # No background image available: use the project's gradient
                 draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
         except Exception:
-            # Defensive fallback
             try:
                 draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
             except Exception:
                 surface.fill(BG_TOP)
 
-        # Draw centered gradient panel / box behind content using shared helper
         panel_w = min(760, sw - 120)
         panel_h = min(520, sh - 160)
         panel_left = (sw - panel_w) // 2
         panel_top = (sh - panel_h) // 2
         panel_rect = pygame.Rect(panel_left, panel_top, panel_w, panel_h)
         try:
-            # Draw a subtle drop shadow behind the panel to separate it from the bg
             shadow = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
             shadow.fill((0, 0, 0, 40))
             surface.blit(shadow, (panel_left + 4, panel_top + 6))
-            # Fill the panel with CARD_BG to match other screens' panels
             pygame.draw.rect(surface, CARD_BG, panel_rect, border_radius=12)
         except Exception:
             pygame.draw.rect(surface, (245, 247, 250), panel_rect)
-        # Draw panel border (match other screens with radius=12)
         pygame.draw.rect(surface, CARD_BORDER, panel_rect, 2, border_radius=12)
 
-        # Title outside the panel: centered above the top border to match other screens
         title_surface = self.title_font.render("Bank", True, PRIMARY)
         title_rect = title_surface.get_rect(center=(sw // 2, panel_top - 20))
-        # Draw a small translucent box behind the title for readability
         try:
             title_bg = pygame.Surface((title_rect.width + 12, title_rect.height + 6), pygame.SRCALPHA)
             title_bg.fill((255, 255, 255, 220))
@@ -298,7 +225,6 @@ class BankScreen(Screen):
             pass
         surface.blit(title_surface, title_rect)
 
-        # Draw a translucent info card inside the panel to show balances
         card_w = min(420, panel_w - 120)
         card_h = 180
         card_x = panel_left + 40
@@ -310,23 +236,24 @@ class BankScreen(Screen):
         surface.blit(card_surf, (card_x, card_y))
 
         player = self.game.player
+        checking_balance = player.bank_account.balance if hasattr(player, 'bank_account') and player.bank_account else 0.0
+        savings_balance = player.savings_account.balance if hasattr(player, 'savings_account') and player.savings_account else 0.0
+
         info_lines = [
-            "Cash: ${:.2f}".format(player.cash),
-            "Checking: ${:.2f}".format(player.bank_account.balance) if getattr(player, 'bank_account', None) else "Checking: $0.00",
-            "Savings: ${:.2f}".format(player.savings_account.balance) if getattr(player, 'savings_account', None) else "Savings: $0.00"
+            f"Cash: ${player.cash:.2f}",
+            f"Checking: ${checking_balance:.2f}",
+            f"Savings: ${savings_balance:.2f}"
         ]
         for i, line in enumerate(info_lines):
             text_surface = self.balance_font.render(line, True, BLACK)
             surface.blit(text_surface, (card_x + 18, card_y + 14 + i * 34))
 
-        # Draw buttons (they will be positioned by create_buttons)
         for button in self.buttons:
             button.draw(surface)
 
-        # Debug overlay: which bank bg file is used (for traceability)
         try:
             bg_name = os.path.basename(_BANK_BACKGROUND_PATH) if isinstance(_BANK_BACKGROUND_PATH, str) else 'none'
-            dbg_surf = self.debug_font.render("BG: {}".format(bg_name), True, BLACK)
+            dbg_surf = self.debug_font.render(f"BG: {bg_name}", True, BLACK)
             dbg_rect = dbg_surf.get_rect(bottomright=(sw - 8, sh - 8))
             box_rect = dbg_rect.inflate(8, 6)
             s = pygame.Surface(box_rect.size, pygame.SRCALPHA)
@@ -337,9 +264,6 @@ class BankScreen(Screen):
             pass
 
 class DepositToSavingsScreen(Screen):
-    """
-    Screen for depositing money into savings account and showing interest.
-    """
     def __init__(self, game):
         super(DepositToSavingsScreen, self).__init__(game)
         try:
@@ -354,15 +278,11 @@ class DepositToSavingsScreen(Screen):
         self.input_text = ""
         self.status_message = None
         self.status_color = BLACK
-        self.interest_rate = 0.02  # 2% interest for demonstration
-
-        # Find the candidate bank interior path but do NOT load it yet.
+        self.interest_rate = 0.02
         _find_bank_interior_path()
         self.background = None
 
     def on_enter(self):
-        """Ensure background is loaded to the active window size when the screen becomes active."""
-        # Do not load an exterior bank background for DepositToSavingsScreen; keep a consistent UI.
         self.background = None
 
     def handle_events(self, events):
@@ -385,16 +305,13 @@ class DepositToSavingsScreen(Screen):
             amount = float(self.input_text)
             if amount > 0 and amount <= player.cash:
                 player.cash -= amount
-                if not player.savings_account:
+                if not hasattr(player, 'savings_account') or not player.savings_account:
                     player.savings_account = BankAccount("Savings")
-                    # Override default interest rate with screen's promotional rate
                     player.savings_account.interest_rate = self.interest_rate
-                # Ensure interest rate matches this screen's rate (could be dynamic)
                 player.savings_account.interest_rate = self.interest_rate
                 player.savings_account.deposit(amount)
-                # Apply interest immediately (one-time promotional interest on deposit)
                 interest = player.savings_account.apply_interest()
-                self.status_message = "Deposited ${:.2f} (+${:.2f} interest)".format(amount, interest)
+                self.status_message = f"Deposited ${amount:.2f} (+${interest:.2f} interest)"
                 self.status_color = SUCCESS
             else:
                 self.status_message = "Invalid amount."
@@ -405,34 +322,27 @@ class DepositToSavingsScreen(Screen):
         self.input_text = ""
 
     def draw(self, surface):
-        # Use a solid background so the ATM panel remains the primary visual element.
         surface.fill(BG_TOP)
-        # Title
         title_surface = self.title_font.render("Deposit to Savings", True, BLACK)
         surface.blit(title_surface, (40, 40))
-        # Prompt
         prompt_surface = self.text_font.render("Enter amount to deposit:", True, BLACK)
         surface.blit(prompt_surface, (40, 120))
-        # Input box
         input_box = pygame.Rect(40, 170, 260, 48)
         pygame.draw.rect(surface, CARD_BG, input_box, border_radius=8)
         pygame.draw.rect(surface, CARD_BORDER, input_box, 2, border_radius=8)
         input_surface = self.text_font.render(self.input_text, True, BLACK)
         surface.blit(input_surface, (input_box.x + 10, input_box.y + 10))
-        # Status
         if self.status_message:
             status_surface = self.text_font.render(self.status_message, True, self.status_color)
             surface.blit(status_surface, (40, 240))
-        # Show current savings balance
         player = self.game.player
         savings_balance = getattr(getattr(player, 'savings_account', None), 'balance', 0.0)
-        balance_surface = self.text_font.render("Savings Balance: ${:.2f}".format(savings_balance), True, BLACK)
+        balance_surface = self.text_font.render(f"Savings Balance: ${savings_balance:.2f}", True, BLACK)
         surface.blit(balance_surface, (40, 320))
 
-        # Debug overlay: show which background image (if any) was used
         try:
             bg_name = os.path.basename(_BANK_BACKGROUND_PATH) if isinstance(_BANK_BACKGROUND_PATH, str) else 'none'
-            dbg_surf = self.debug_font.render("BG: {}".format(bg_name), True, BLACK)
+            dbg_surf = self.debug_font.render(f"BG: {bg_name}", True, BLACK)
             dbg_rect = dbg_surf.get_rect(bottomright=(SCREEN_WIDTH - 8, SCREEN_HEIGHT - 8))
             box_rect = dbg_rect.inflate(8, 6)
             s = pygame.Surface(box_rect.size, pygame.SRCALPHA)

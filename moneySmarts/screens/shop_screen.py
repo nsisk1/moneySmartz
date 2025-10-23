@@ -1,4 +1,5 @@
 import pygame
+from moneySmarts.ui_helpers import ModalPopup
 
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
@@ -38,6 +39,7 @@ class ShopScreen(Screen):
         self.show_insufficient_popup = False
         self.insufficient_text = ""
         self.insufficient_ok_btn = None
+        self.modal_popup = None
 
     def create_buttons(self):
         self.buttons = []
@@ -90,22 +92,14 @@ class ShopScreen(Screen):
             f"Insufficient funds for {item_name}!\n"
             f"Required: ${required:,.2f}\nAvailable: ${available:,.2f}"
         )
-        self.show_insufficient_popup = True
-        self.insufficient_ok_btn = Button(
-            SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 40, 200, 50, "OK", action=self.close_insufficient_popup
-        )
+        # Use ModalPopup instead of manual drawing
+        self.modal_popup = ModalPopup("Insufficient Funds", self.insufficient_text, on_ok=self._clear_modal)
 
-    def close_insufficient_popup(self):
-        # Only close the popup if the game is not over
-        if hasattr(self.game, 'is_game_over') and self.game.is_game_over:
-            # Transition to GameOverScreen instead of freezing
-            from moneySmarts.screens.game_over_screen import GameOverScreen
-            self.game.gui_manager.set_screen(GameOverScreen(self.game, reason="Game Over: You cannot make purchases due to unpaid bills."))
-            return
-        self.show_insufficient_popup = False
-        self.insufficient_text = ""
-        self.insufficient_ok_btn = None
-        self.game.gui_manager.set_screen(ShopScreen(self.game))
+    def _clear_modal(self):
+        self.modal_popup = None
+        # reset any transient flags
+        self.selected_item = None
+        self.message = ""
 
     def pay_cash(self):
         if not self.selected_item:
@@ -126,8 +120,9 @@ class ShopScreen(Screen):
                 f"After: ${cash_after:.2f}\n"
                 f"Bought {self.selected_item['name']} with cash!"
             )
+            # Show confirmation as modal
+            self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
             self.show_payment_popup = False
-            self.show_confirmation_popup = True
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, cash_before)
 
@@ -150,12 +145,8 @@ class ShopScreen(Screen):
                 f"Bank After: ${bank_after:.2f}\n"
                 f"Bought {self.selected_item['name']} from bank!"
             )
+            self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
             self.show_payment_popup = False
-            self.show_confirmation_popup = True
-            # Remove these lines to allow confirmation popup to show
-            # self.selected_item = None
-            # self.show_confirmation_popup = False
-            # self.message = "Purchase successful!"
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, bank_before)
 
@@ -178,8 +169,8 @@ class ShopScreen(Screen):
                 f"Credit After: ${credit_after:.2f}\n"
                 f"Bought {self.selected_item['name']} on credit!"
             )
+            self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
             self.show_payment_popup = False
-            self.show_confirmation_popup = True
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, credit_before)
 
@@ -202,50 +193,54 @@ class ShopScreen(Screen):
         self.inventory_popup_btn = None
 
     def handle_events(self, events):
+        """Handle a list of pygame events for the shop screen (GUI manager calls this)."""
+        # If modal popup present, delegate to it first
+        if getattr(self, 'modal_popup', None):
+            handled = self.modal_popup.handle_events(events)
+            if handled:
+                # modal on_ok may clear itself; ensure we reset flags
+                if getattr(self, 'modal_popup', None) is None:
+                    self.selected_item = None
+                    self.message = ""
+                return
+        # otherwise fall back to previous handling
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = False
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_click = True
-        # Confirmation popup OK button
-        if self.show_confirmation_popup and self.ok_btn_rect:
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if self.ok_btn_rect.collidepoint(mouse_pos):
-                        self.show_confirmation_popup = False
-                        self.confirmation_text = ""
-                        self.selected_item = None
-                        self.game.gui_manager.set_screen(ShopScreen(self.game))
-                        return
-        elif self.show_insufficient_popup and self.insufficient_ok_btn:
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    action = self.insufficient_ok_btn.update(mouse_pos, True)
-                    if callable(action):
-                        action()
-                        return
-        elif self.show_payment_popup:
-            # Only handle payment popup buttons
+            if event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
+                # treat back as go_back
+                self.go_back()
+                return
+
+        # Payment popup buttons
+        if self.show_payment_popup:
             for btn in [self.pay_cash_btn, self.pay_bank_btn, self.pay_credit_btn, self.popup_back_btn]:
                 action = btn.update(mouse_pos, mouse_click)
                 if callable(action):
                     action()
-        elif getattr(self, 'show_inventory', False) and getattr(self, 'inventory_popup_btn', None):
-            # Handle inventory popup button
+                    return
+
+        # Inventory popup
+        if getattr(self, 'show_inventory', False) and getattr(self, 'inventory_popup_btn', None):
             action = self.inventory_popup_btn.update(mouse_pos, mouse_click)
             if callable(action):
                 action()
-        else:
-            # Handle main shop buttons (including back and inventory)
-            for btn in self.buttons:
-                if btn:
-                    action = btn.update(mouse_pos, mouse_click)
-                    if callable(action):
-                        action()
-            if self.main_back_btn:
-                action = self.main_back_btn.update(mouse_pos, mouse_click)
+                return
+
+        # Main shop buttons
+        for btn in self.buttons:
+            if btn:
+                action = btn.update(mouse_pos, mouse_click)
                 if callable(action):
                     action()
+                    return
+        if self.main_back_btn:
+            action = self.main_back_btn.update(mouse_pos, mouse_click)
+            if callable(action):
+                action()
+                return
 
     def draw(self, surface):
         surface.fill(BG_TOP)

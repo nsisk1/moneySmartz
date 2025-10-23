@@ -24,6 +24,11 @@ from moneySmarts.world_assets import discover_buildings
 
 Surface = pygame.Surface
 
+
+def _key(path: str, size: Optional[Tuple[int,int]]):
+    return f"{path}|{size[0]}x{size[1]}" if size else path
+
+
 class ImageManager:
     def __init__(self):
         self._cache: Dict[str, Surface] = {}
@@ -77,9 +82,6 @@ class ImageManager:
             except Exception:
                 pass
 
-    def _key(self, path: str, size: Optional[Tuple[int,int]]):
-        return f"{path}|{size[0]}x{size[1]}" if size else path
-
     def load_image(self, path_or_key: str, size: Optional[Tuple[int,int]] = None, smooth: bool = True, colorkey=None) -> Optional[Surface]:
         """Load (or fetch cached) image. Accepts symbolic key in IMAGES or file path.
         Auto-reloads if file mtime changed. Returns None if not found.
@@ -97,7 +99,7 @@ class ImageManager:
         if not os.path.exists(path):
             return None
         mtime = os.path.getmtime(path)
-        cache_key = self._key(path, size)
+        cache_key = _key(path, size)
         if cache_key in self._cache and self._mtimes.get(cache_key) == mtime:
             self._usage[cache_key] = self._usage.get(cache_key,0)+1
             return self._cache[cache_key]

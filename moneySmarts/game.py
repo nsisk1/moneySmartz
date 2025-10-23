@@ -2,6 +2,7 @@ import os
 import random
 import logging
 import sys  # added for interactivity check
+import pygame
 from moneySmarts.models import Player, BankAccount, Card, Loan, Asset
 from moneySmarts.event_manager import EventBus
 from moneySmarts.config_manager import Config
@@ -889,6 +890,22 @@ class Game:
         """Saves the current game state, trying cloud then local storage."""
         payload = {'version': SAVEGAME_VERSION, 'game_state': self._serialize_state()}
         storage = get_storage()
+        loading_prev = None
+        # If we have a GUI manager, show the loading screen briefly
+        if getattr(self, 'gui_manager', None):
+            try:
+                from moneySmarts.screens.loading_screen import LoadingScreen
+                loading_prev = self.gui_manager.current_screen
+                loading = LoadingScreen(self, message="Saving game...")
+                self.gui_manager.set_screen(loading)
+                # Force one frame so the player sees the loading screen
+                try:
+                    pygame.display.flip()
+                    self.gui_manager.clock.tick(30)
+                except Exception:
+                    pass
+            except Exception:
+                loading_prev = None
         try:
             storage.save(payload, filename=filename)
             logging.info("Game state saved to {0}.".format(type(storage).__name__))
@@ -906,11 +923,33 @@ class Game:
                     raise GameError("Failed to save game to both cloud and local storage.")
             else:
                 raise GameError("Failed to save game to local storage.")
+        finally:
+            # Restore previous screen if possible
+            if getattr(self, 'gui_manager', None) and loading_prev is not None:
+                try:
+                    self.gui_manager.set_screen(loading_prev)
+                except Exception:
+                    pass
 
     def load_state(self, filename="savegame.dat"):
         """Loads the game state, trying cloud then local storage."""
         storage = get_storage()
         data = None
+        loading_prev = None
+        # Show loading screen if we have a GUI manager
+        if getattr(self, 'gui_manager', None):
+            try:
+                from moneySmarts.screens.loading_screen import LoadingScreen
+                loading_prev = self.gui_manager.current_screen
+                loading = LoadingScreen(self, message="Loading game...")
+                self.gui_manager.set_screen(loading)
+                try:
+                    pygame.display.flip()
+                    self.gui_manager.clock.tick(30)
+                except Exception:
+                    pass
+            except Exception:
+                loading_prev = None
         try:
             data = storage.load(filename=filename)
             logging.info("Game state loaded from {0}.".format(type(storage).__name__))
@@ -929,6 +968,12 @@ class Game:
                 raise GameError("Failed to load game from local storage.")
 
         if not data:
+            # Restore previous screen before raising so UI isn't left on loading screen
+            if getattr(self, 'gui_manager', None) and loading_prev is not None:
+                try:
+                    self.gui_manager.set_screen(loading_prev)
+                except Exception:
+                    pass
             raise GameError("No valid save file found.")
 
         self._deserialize_state(data['game_state'])
@@ -940,6 +985,13 @@ class Game:
                 self.gui_manager.set_screen(GameScreen(self))
             except Exception:
                 logging.exception("Failed to set GameScreen after loading state")
+            finally:
+                # no-op: GameScreen set above; if it failed, restore previous
+                if getattr(self, 'gui_manager', None) and loading_prev is not None and not getattr(self, 'player', None):
+                    try:
+                        self.gui_manager.set_screen(loading_prev)
+                    except Exception:
+                        pass
 
     # --- Control ---
     def quit(self):

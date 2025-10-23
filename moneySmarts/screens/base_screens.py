@@ -58,13 +58,19 @@ class TitleScreen(Screen):
             font_name=button_font,
             action=self.save_game
         )
-        quit_button = Button(
+        settings_button = Button(
             SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 230,
+            200, 50, "Settings",
+            font_name=button_font,
+            action=self.open_settings
+        )
+        quit_button = Button(
+            SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 290,
             200, 50, "Quit",
             font_name=button_font,
             action=self.confirm_quit_game
         )
-        self.buttons = [start_button, load_button, save_button, quit_button]
+        self.buttons = [start_button, load_button, save_button, settings_button, quit_button]
 
         self.show_confirm = False
         self.confirm_action = None
@@ -84,7 +90,11 @@ class TitleScreen(Screen):
 
     def start_new_game(self):
         from moneySmarts.screens.base_screens import NameInputScreen
-        self.game.gui_manager.set_screen(NameInputScreen(self.game, next_screen='intro'))
+        self.game.gui_manager.set_screen(NameInputScreen(self.game))
+
+    def open_settings(self):
+        from moneySmarts.screens.settings_screen import SettingsScreen
+        self.game.gui_manager.set_screen(SettingsScreen(self.game))
 
     def quit_game(self):
         self.game.quit()
@@ -114,16 +124,7 @@ class TitleScreen(Screen):
     def load_game(self):
         try:
             self.game.load_state()
-            # Ensure the GUI switches to the active game screen after loading.
-            try:
-                from moneySmarts.screens.game_screen import GameScreen
-                if getattr(self.game, 'gui_manager', None):
-                    self.game.gui_manager.set_screen(GameScreen(self.game))
-                self.confirm_message = "Game loaded and resumed."
-            except Exception:
-                # If switching to GameScreen fails, show a simple success message
-                logging.exception("Failed to set GameScreen after loading state")
-                self.confirm_message = "Game loaded successfully!"
+            self.confirm_message = "Game loaded successfully!"
         except GameError as e:
             self.confirm_message = f"Load failed: {e}"
         self.show_confirm = True
@@ -211,11 +212,16 @@ class TitleScreen(Screen):
         text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20))
         surface.blit(text_surface, text_rect)
 
-        yes_button = Button(dialog_x + 60, dialog_y + 120, 140, 44, "Yes", action=self.confirm_yes)
-        no_button = Button(dialog_x + 280, dialog_y + 120, 140, 44, "No", action=self.confirm_no)
-        yes_button.draw(surface)
-        no_button.draw(surface)
-        self.confirm_buttons = [yes_button, no_button]
+        if self.confirm_action:
+            yes_button = Button(dialog_x + 60, dialog_y + 120, 140, 44, "Yes", action=self.confirm_yes)
+            no_button = Button(dialog_x + 280, dialog_y + 120, 140, 44, "No", action=self.confirm_no)
+            yes_button.draw(surface)
+            no_button.draw(surface)
+            self.confirm_buttons = [yes_button, no_button]
+        else:
+            ok_button = Button(dialog_x + (dialog_width - 140) // 2, dialog_y + 120, 140, 44, "OK", action=self.confirm_no)
+            ok_button.draw(surface)
+            self.confirm_buttons = [ok_button]
 
     def confirm_yes(self):
         if self.confirm_action:
@@ -254,9 +260,8 @@ class TitleScreen(Screen):
 class NameInputScreen(Screen):
     play_startup_music = True
 
-    def __init__(self, game: 'Game', next_screen: str = 'intro'):
+    def __init__(self, game: 'Game'):
         super().__init__(game)
-        self.next_screen = next_screen
         self.background_image = None
         self._background_original = image_manager.load_image('name_background.png')
         if self._background_original:
@@ -308,8 +313,6 @@ class NameInputScreen(Screen):
         if name:
             from moneySmarts.models import Player
             self.game.player = Player(name)
-            # Overworld/explorer mode has been removed. Always go to the
-            # introductory flow instead.
             from moneySmarts.screens.base_screens import IntroScreen
             self.game.gui_manager.set_screen(IntroScreen(self.game))
 
@@ -331,7 +334,6 @@ class NameInputScreen(Screen):
             surface.fill(self.bg_color)
 
         if self.background_image:
-                 # NOTE: translucent overlay removed; draw title directly over background
             title_surface = self.title_font.render("Enter Your Name", True, BLACK)
             title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 60))
             surface.blit(title_surface, title_rect)
@@ -351,7 +353,7 @@ class NameInputScreen(Screen):
 class IntroScreen(Screen):
     play_startup_music = True
 
-    def __init__(self, game: 'Game'):
+    def __init__(self, game: 'Game') -> None:
         super().__init__(game)
         self._background_original = image_manager.load_image('INTRO_BG')
         self.background_image = self._background_original

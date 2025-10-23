@@ -1,0 +1,9 @@
+{
+    "retirement_age": 65,
+    "base_living_expenses": 1000,
+    "homeowner_expenses": 500,
+    "car_expenses": 200,
+    "family_expenses_per_member": 500,
+    "inflation_rate": 0.02,
+    "theme": "classic"
+}

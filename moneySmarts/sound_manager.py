@@ -10,8 +10,6 @@ class SoundManager:
         
     def load_music(self, filename, name):
         """Load a music file and store it by name"""
-        # We don't actually load the file, we just store the path
-        # Pygame mixer loads music when played
         self.sounds[name] = filename
         
     def play_music(self, name, loops=-1):
@@ -37,3 +35,15 @@ class SoundManager:
         if pygame.mixer.music.get_busy():
             pygame.mixer.music.set_volume(self.music_volume)
 
+    def get_volume(self):
+        """Get current music volume"""
+        return self.music_volume
+
+    def get_available_music(self):
+        """Return a list of available music names"""
+        return list(self.sounds.keys())
+
+    def set_active_music(self, name):
+        """Set the active music track and play it"""
+        if name in self.sounds:
+            self.play_music(name)

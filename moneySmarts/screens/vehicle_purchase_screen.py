@@ -2,6 +2,7 @@ import os
 import pygame
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
+from moneySmarts.ui_helpers import ModalPopup, create_selection_buttons
 
 VEHICLE_OPTIONS = [
     {"name": "Used Car", "price": 1200, "desc": "Reliable but basic transportation."},
@@ -14,18 +15,12 @@ class VehiclePurchaseScreen(Screen):
         super().__init__(game)
         self.selected_vehicle = None
         self.message = ""
-        self.show_popup = False
-        self.popup_text = ""
+        self.modal_popup = None
         self.create_buttons()
-        # Removed image loading; we will draw placeholders
 
     def create_buttons(self):
-        self.buttons = []
-        y = 150
-        for idx, vehicle in enumerate(VEHICLE_OPTIONS):
-            btn = Button(80, y, 400, 60, f"{vehicle['name']} - ${vehicle['price']}", action=lambda i=idx: self.select_vehicle(i))
-            self.buttons.append(btn)
-            y += 90
+        labels = [f"{v['name']} - ${v['price']}" for v in VEHICLE_OPTIONS]
+        self.buttons = create_selection_buttons(labels, 80, 150, 400, 60, 30, self.select_vehicle)
         self.buy_cash_btn = Button(600, 150, 180, 40, "Buy Cash", action=self.buy_cash)
         self.buy_bank_btn = Button(600, 210, 180, 40, "Buy Bank", action=self.buy_bank)
         self.buy_credit_btn = Button(600, 270, 180, 40, "Buy Credit", action=self.buy_credit)
@@ -38,33 +33,33 @@ class VehiclePurchaseScreen(Screen):
 
     def buy_cash(self):
         if not self.selected_vehicle:
-            self.message = "Select a vehicle first."
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
             return
         price = self.selected_vehicle['price']
-        cash_before = self.game.player.cash
+        cash_before = getattr(self.game.player, 'cash', 0)
         if cash_before >= price:
             self.game.player.cash -= price
             cash_after = self.game.player.cash
             self.game.player.vehicle = self.selected_vehicle['name']
             from moneySmarts.models import Asset
             self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
-            self.show_popup = True
-            self.popup_text = (
+            popup_text = (
                 f"Purchase Confirmation:\n"
                 f"Before: ${cash_before:.2f}\n"
                 f"Purchase: -${price:.2f}\n"
                 f"After: ${cash_after:.2f}\n"
                 f"You bought the {self.selected_vehicle['name']} with cash!"
             )
+            self.modal_popup = ModalPopup("Purchased", popup_text, on_ok=self._post_purchase)
             self.selected_vehicle = None
         else:
-            self.message = "Not enough cash."
+            self.modal_popup = ModalPopup("Insufficient", "Not enough cash.", on_ok=lambda: self._clear_message())
 
     def buy_bank(self):
         if not self.selected_vehicle:
-            self.message = "Select a vehicle first."
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
             return
-        acct = self.game.player.bank_account
+        acct = getattr(self.game.player, 'bank_account', None)
         price = self.selected_vehicle['price']
         bank_before = acct.balance if acct else 0
         if acct and acct.balance >= price:
@@ -73,73 +68,92 @@ class VehiclePurchaseScreen(Screen):
             self.game.player.vehicle = self.selected_vehicle['name']
             from moneySmarts.models import Asset
             self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
-            self.show_popup = True
-            self.popup_text = (
+            popup_text = (
                 f"Purchase Confirmation:\n"
                 f"Bank Before: ${bank_before:.2f}\n"
                 f"Purchase: -${price:.2f}\n"
                 f"Bank After: ${bank_after:.2f}\n"
                 f"You bought the {self.selected_vehicle['name']} from bank!"
             )
+            self.modal_popup = ModalPopup("Purchased", popup_text, on_ok=self._post_purchase)
             self.selected_vehicle = None
-            # Automatically return to previous menu after purchase
-            self.go_back()  # Ensure go_back() navigates correctly
+            # Navigate back to shop after purchase
         else:
-            self.message = "Not enough in bank account."
+            self.modal_popup = ModalPopup("Insufficient", "Not enough in bank account.", on_ok=lambda: self._clear_message())
 
     def buy_credit(self):
         if not self.selected_vehicle:
-            self.message = "Select a vehicle first."
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
             return
-        card = self.game.player.credit_card
+        card = getattr(self.game.player, 'credit_card', None)
         price = self.selected_vehicle['price']
         credit_before = card.balance if card else 0
-        if card and card.charge(price):
+        if card and getattr(card, 'charge', lambda x: False)(price):
             credit_after = card.balance
             self.game.player.vehicle = self.selected_vehicle['name']
             from moneySmarts.models import Asset
             self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
-            self.show_popup = True
-            self.popup_text = (
+            popup_text = (
                 f"Purchase Confirmation:\n"
                 f"Credit Before: ${credit_before:.2f}\n"
                 f"Purchase: -${price:.2f}\n"
                 f"Credit After: ${credit_after:.2f}\n"
                 f"You bought the {self.selected_vehicle['name']} on credit!"
             )
+            self.modal_popup = ModalPopup("Purchased", popup_text, on_ok=self._post_purchase)
             self.selected_vehicle = None
         else:
-            self.message = "Not enough credit or no card."
+            self.modal_popup = ModalPopup("Insufficient", "Not enough credit or no card.", on_ok=lambda: self._clear_message())
 
     def finance_vehicle(self):
         if not self.selected_vehicle:
-            self.message = "Select a vehicle first."
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
             return
         price = self.selected_vehicle['price']
         if hasattr(self.game.player, 'credit_score') and self.game.player.credit_score >= 650:
-            self.game.player.loans.append({
-                'type': 'vehicle',
-                'amount': price,
-                'name': self.selected_vehicle['name']
-            })
-            self.game.player.vehicle = self.selected_vehicle['name']
-            from moneySmarts.models import Asset
-            self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
-            self.show_popup = True
-            self.popup_text = (
+            # keep loans in models format if available; this is a simple placeholder
+            try:
+                from moneySmarts.models import Loan, Asset
+                loan = Loan("Auto", price, 0.05, 5)
+                self.game.player.loans.append(loan)
+                self.game.player.vehicle = self.selected_vehicle['name']
+                self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
+            except Exception:
+                # fallback: minimal loan representation
+                self.game.player.loans.append({'type': 'vehicle', 'amount': price, 'name': self.selected_vehicle['name']})
+                from moneySmarts.models import Asset
+                self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
+            popup_text = (
                 f"Purchase Confirmation:\n"
                 f"Financed Amount: ${price:.2f}\n"
                 f"Financed {self.selected_vehicle['name']}! Loan added."
             )
+            self.modal_popup = ModalPopup("Financed", popup_text, on_ok=self._post_purchase)
             self.selected_vehicle = None
         else:
-            self.message = "Credit score too low for financing."
+            self.modal_popup = ModalPopup("Denied", "Credit score too low for financing.", on_ok=lambda: self._clear_message())
 
-    def go_back(self):
-        from moneySmarts.screens.shop_screen import ShopScreen
+    def _post_purchase(self):
         self.selected_vehicle = None
         self.message = ""
-        self.game.gui_manager.set_screen(ShopScreen(self.game))
+        try:
+            from moneySmarts.screens.shop_screen import ShopScreen
+            self.game.gui_manager.set_screen(ShopScreen(self.game))
+        except Exception:
+            self.modal_popup = None
+
+    def _clear_message(self):
+        self.message = ""
+        self.modal_popup = None
+
+    def go_back(self):
+        try:
+            from moneySmarts.screens.shop_screen import ShopScreen
+            self.selected_vehicle = None
+            self.message = ""
+            self.game.gui_manager.set_screen(ShopScreen(self.game))
+        except Exception:
+            pass
 
     def draw_vehicle_placeholder(self, surface, x, y, w=200, h=100, color=PRIMARY):
         # Draw a simple vehicle placeholder
@@ -165,6 +179,9 @@ class VehiclePurchaseScreen(Screen):
             surface.blit(desc, (500, y+20))
             y += 90
         for btn in self.buttons:
+            # highlight selected
+            if self.selected_vehicle and btn.text.startswith(self.selected_vehicle['name']):
+                pygame.draw.rect(surface, ACCENT, (btn.rect.x-4, btn.rect.y-4, btn.rect.width+8, btn.rect.height+8), 2, border_radius=10)
             btn.draw(surface)
         self.buy_cash_btn.draw(surface)
         self.buy_bank_btn.draw(surface)
@@ -172,45 +189,40 @@ class VehiclePurchaseScreen(Screen):
         self.finance_btn.draw(surface)
         self.back_btn.draw(surface)
         msg_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        msg = msg_font.render(self.message, True, DANGER if "Not" in self.message or "low" in self.message else SUCCESS)
-        surface.blit(msg, (80, 480))
-        # Draw popup if needed
-        if self.show_popup:
-            popup_rect = pygame.Rect(200, 180, 500, 220)
-            pygame.draw.rect(surface, (245, 255, 240), popup_rect, border_radius=12)
-            pygame.draw.rect(surface, ACCENT, popup_rect, 3, border_radius=12)
-            lines = self.popup_text.split('\n')
-            for i, line in enumerate(lines):
-                line_surf = msg_font.render(line, True, BLACK)
-                surface.blit(line_surf, (popup_rect.x + 30, popup_rect.y + 30 + i * 35))
-            # Draw OK button
-            ok_btn_rect = pygame.Rect(popup_rect.x + 180, popup_rect.y + 160, 140, 40)
-            pygame.draw.rect(surface, SUCCESS, ok_btn_rect, border_radius=8)
-            ok_text = msg_font.render("OK", True, WHITE)
-            surface.blit(ok_text, (ok_btn_rect.x + 45, ok_btn_rect.y + 5))
-            self.ok_btn_rect = ok_btn_rect
+        if not self.modal_popup:
+            msg = msg_font.render(self.message, True, DANGER if "Not" in self.message or "low" in self.message else SUCCESS)
+            surface.blit(msg, (80, 480))
         else:
-            self.ok_btn_rect = None
+            self.modal_popup.draw(surface)
 
-    def handle_event(self, event):
-        if self.show_popup and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            if self.ok_btn_rect and self.ok_btn_rect.collidepoint(mouse_pos):
-                self.show_popup = False
-                self.popup_text = ""
+    def handle_events(self, events):
+        # Modal first
+        if self.modal_popup:
+            handled = self.modal_popup.handle_events(events)
+            if handled:
+                self.modal_popup = None
+            return
+
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = False
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_click = True
+            if event.type == pygame.KEYDOWN:
+                if event.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
+                    self.go_back()
+                    return
+
+        # Check vehicle selection buttons
+        for btn in self.buttons:
+            action = btn.update(mouse_pos, mouse_click)
+            if action:
+                action()
                 return
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            for btn in self.buttons:
-                if btn.rect.collidepoint(mouse_pos):
-                    if btn.action:
-                        btn.action()
-                        return
-            for btn in [self.buy_cash_btn, self.buy_bank_btn, self.buy_credit_btn, self.finance_btn, self.back_btn]:
-                if btn.rect.collidepoint(mouse_pos):
-                    if btn.action:
-                        btn.action()
-                        return
-        if event.type == pygame.KEYDOWN:
-            if event.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
-                self.go_back()
+
+        # Check purchase/finance/back buttons
+        for btn in [self.buy_cash_btn, self.buy_bank_btn, self.buy_credit_btn, self.finance_btn, self.back_btn]:
+            action = btn.update(mouse_pos, mouse_click)
+            if action:
+                action()
+                return

@@ -49,14 +49,20 @@ class InventoryScreen(Screen):
                 y += 40
         self.back_btn.draw(surface)
 
-    def handle_event(self, event):
+    def handle_events(self, events):
         """
-        Handle mouse click events for the inventory screen.
-        Args:
-            event: The pygame event to handle.
+        Handle incoming pygame events (list) for the inventory screen.
         """
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            if self.back_btn.rect.collidepoint(mouse_pos):
-                if self.back_btn.action:
-                    self.back_btn.action()
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = False
+        for ev in events:
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                mouse_click = True
+            if ev.type == pygame.KEYDOWN and ev.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
+                self.go_back()
+                return
+
+        if mouse_click and self.back_btn:
+            action = self.back_btn.update(mouse_pos, True)
+            if callable(action):
+                action()

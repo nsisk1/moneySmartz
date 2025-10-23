@@ -35,7 +35,20 @@ class GameOverScreen(Screen):
         for btn in self.buttons:
             btn.draw(surface)
 
-    def handle_event(self, event):
+    def handle_events(self, events):
+        """Handle list of pygame events for GameOverScreen."""
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = False
+        for ev in events:
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                mouse_click = True
+            if ev.type == pygame.KEYDOWN:
+                if ev.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
+                    # treat escape as quit
+                    self.quit_game()
+                    return
         for btn in self.buttons:
-            btn.handle_event(event)
-
+            action = btn.update(mouse_pos, mouse_click)
+            if action:
+                action()
+                return

@@ -36,7 +36,6 @@ from moneySmarts.screens import TitleScreen
 from moneySmarts.exceptions import GameError
 from moneySmarts.constants import SCREEN_WIDTH, SCREEN_HEIGHT
 
-
 def main() -> None:
     """
     Main function that initializes and runs the game.
