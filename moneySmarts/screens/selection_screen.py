@@ -1,8 +1,9 @@
-import pygame
 from typing import List, Dict, Optional
+import pygame
 from moneySmarts.ui import Screen, Button
 from moneySmarts.ui_helpers import ModalPopup, create_selection_buttons
 from moneySmarts.constants import *
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 class SelectionScreen(Screen):
     """Generic selection screen for choosing items (homes, vehicles, etc.).
@@ -25,6 +26,7 @@ class SelectionScreen(Screen):
         else:
             self.buy_btn = None
         self.back_btn = Button(600, 350, 120, 40, "Back", action=self.go_back)
+        self._background_original = load_ui_background('SELECTION_BG')
 
     def select_item(self, idx: int):
         self.selected_index = idx
@@ -88,7 +90,7 @@ class SelectionScreen(Screen):
 
     def draw(self, surface: pygame.Surface):
         # Basic layout and drawing of selectable items
-        surface.fill(BG_TOP)
+        draw_background(surface, self._background_original, default_color=BG_TOP)
         font = pygame.font.SysFont('Arial', FONT_LARGE)
         title_surf = font.render(self.title, True, PRIMARY)
         surface.blit(title_surf, (80, 60))
@@ -150,4 +152,3 @@ class SelectionScreen(Screen):
                 if action:
                     action()
                     return
-

@@ -5,5 +5,10 @@
     "car_expenses": 200,
     "family_expenses_per_member": 500,
     "inflation_rate": 0.02,
-    "theme": "classic"
+    "theme": "classic",
+    "sfx_click": "click",
+    "sfx_startup": "startup",
+    "sfx_success": "success",
+    "sfx_error": "error",
+    "music_track": "ambient_city"
 }

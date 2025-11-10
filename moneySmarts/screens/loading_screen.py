@@ -1,92 +1,58 @@
-from typing import Optional
 import pygame
-import time
-import logging
 from moneySmarts.ui import Screen
-from moneySmarts.image_manager import image_manager
-from moneySmarts.constants import FONT_MEDIUM, BLACK, WHITE
-
+from moneySmarts.constants import FONT_LARGE, BG_TOP, BG_BOTTOM, PRIMARY
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 class LoadingScreen(Screen):
-    """Simple loading screen displayed during long-running operations.
-
-    Usage:
-      screen = LoadingScreen(game, message="Loading...")
-      gui_manager.set_screen(screen)
-      # perform work in background or main thread, call screen.set_progress(pct)
-      screen.set_progress(0.5)
-
-    The screen will display the game's LOADING_SCREEN image (if present via
-    image_manager), otherwise it falls back to a plain background with message.
-    """
-
     def __init__(self, game, message: str = "Loading..."):
         super(LoadingScreen, self).__init__(game)
         self.message = message
-        self._bg = None
+        self.angle = 0
         try:
-            self._bg = image_manager.load_image('LOADING_SCREEN')
-        except Exception as e:
-            logging.debug("LoadingScreen: failed to load LOADING_SCREEN image: {}".format(e))
-            self._bg = None
-        self.progress = None  # None = indeterminate spinner
-        self._spinner_angle = 0
-        self._last_tick = time.time()
-
-    def set_progress(self, fraction: Optional[float]):
-        """Set progress as a float between 0.0 and 1.0, or None for indeterminate."""
-        if fraction is None:
-            self.progress = None
-        else:
-            try:
-                self.progress = max(0.0, min(1.0, float(fraction)))
-            except Exception:
-                self.progress = None
-
-    def update(self):
-        # rotate spinner when indeterminate
-        now = time.time()
-        dt = now - self._last_tick
-        self._last_tick = now
-        self._spinner_angle = (self._spinner_angle + dt * 360 * 0.5) % 360
-
-    def draw(self, surface: pygame.Surface):
-        sw, sh = surface.get_size()
-        # draw background image scaled if available
-        if self._bg:
-            try:
-                if self._bg.get_width() != sw or self._bg.get_height() != sh:
-                    bg = pygame.transform.smoothscale(self._bg, (sw, sh))
-                else:
-                    bg = self._bg
-                surface.blit(bg, (0, 0))
-            except Exception:
-                surface.fill(WHITE)
-        else:
-            surface.fill(WHITE)
-
-        # draw centered message box
-        font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        msg_surf = font.render(self.message, True, BLACK)
-        msg_rect = msg_surf.get_rect(center=(sw // 2, sh // 2 - 20))
-        surface.blit(msg_surf, msg_rect)
-
-        # draw progress bar or spinner
-        if self.progress is None:
-            # draw spinner (simple rotating line)
-            cx, cy = sw // 2, sh // 2 + 40
-            radius = 20
-            end_x = int(cx + radius * pygame.math.Vector2(1, 0).rotate(self._spinner_angle).x)
-            end_y = int(cy + radius * pygame.math.Vector2(1, 0).rotate(self._spinner_angle).y)
-            pygame.draw.circle(surface, BLACK, (cx, cy), radius, 2)
-            pygame.draw.line(surface, BLACK, (cx, cy), (end_x, end_y), 3)
-        else:
-            bar_w, bar_h = min(400, sw - 160), 20
-            bx = (sw - bar_w) // 2
-            by = sh // 2 + 30
-            pygame.draw.rect(surface, (200, 200, 200), (bx, by, bar_w, bar_h), border_radius=6)
-            pygame.draw.rect(surface, (100, 180, 100), (bx + 2, by + 2, int((bar_w - 4) * self.progress), bar_h - 4), border_radius=6)
+            self.font = pygame.font.SysFont('Arial', FONT_LARGE)
+        except Exception:
+            self.font = pygame.font.SysFont('Arial', FONT_LARGE)
+        self._background_original = load_ui_background('LOADING_SCREEN')
 
     def handle_events(self, events):
-        # swallow input while loading
+        # Swallow all events while loading
         return
+
+    def on_enter(self):
+        """Called when the GUIManager sets this screen; kept for API compatibility."""
+        # no-op for now; prepared to start background loading tasks if needed
+        return
+
+    def update(self):
+        # simple spinner animation
+        self.angle = (self.angle + 6) % 360
+
+    def draw(self, surface):
+        # Draw themed background if available, otherwise gradient
+        if self._background_original:
+            draw_background(surface, self._background_original, default_color=BG_TOP)
+        else:
+            try:
+                from moneySmarts.ui import draw_vertical_gradient
+                draw_vertical_gradient(surface, (0, 0, surface.get_width(), surface.get_height()), BG_TOP, BG_BOTTOM)
+            except Exception:
+                surface.fill(BG_TOP)
+
+        # Draw centered message
+        sw, sh = surface.get_size()
+        try:
+            text_surf = self.font.render(self.message, True, PRIMARY)
+            rect = text_surf.get_rect(center=(sw//2, sh//2))
+            surface.blit(text_surf, rect)
+        except Exception:
+            pass
+
+        # Draw a simple rotating bar as spinner
+        cx, cy = sw // 2, sh // 2 + 60
+        length = 30
+        end_x = cx + int(length * pygame.math.Vector2(1, 0).rotate(self.angle)[0])
+        end_y = cy + int(length * pygame.math.Vector2(1, 0).rotate(self.angle)[1])
+        try:
+            pygame.draw.line(surface, PRIMARY, (cx, cy), (end_x, end_y), 4)
+        except Exception:
+            pass

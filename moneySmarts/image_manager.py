@@ -15,7 +15,6 @@ This is intentionally lightweight; expensive operations occur only once.
 from __future__ import annotations
 import os
 import pygame
-import hashlib
 import logging
 from typing import Dict, Tuple, List, Optional
 
@@ -92,11 +91,12 @@ class ImageManager:
             path = path_or_key
         else:
             # Resolve symbolic key or relative path via images helper
-            if path_or_key in IMAGES:
+            try:
                 path = get_image_path(path_or_key)
-            else:
-                path = get_image_path(path_or_key)
-        if not os.path.exists(path):
+            except Exception:
+                path = None
+        # If helper returned None or path doesn't exist, give up
+        if not path or not os.path.exists(path):
             return None
         mtime = os.path.getmtime(path)
         cache_key = _key(path, size)
@@ -150,8 +150,9 @@ class ImageManager:
         target = best.exterior_path if image_type == 'exterior' else best.interior_path
         if not target:
             return None
-        rel = os.path.relpath(target, os.path.commonpath([target, os.getcwd()])) if os.path.exists(target) else target
-        return self.load_image(rel, size=size, smooth=True)
+        # Pass the target through directly. If it's an absolute path, load_image will short-circuit
+        # and load from filesystem; if it's a symbolic key/relative path, load_image will resolve it.
+        return self.load_image(target, size=size, smooth=True)
 
     # ---------------- Sprite sheets / animations ----------------
     def slice_sheet(self, path_or_key: str, frame_w: int, frame_h: int, colorkey=None) -> List[Surface]:
@@ -258,8 +259,12 @@ class ImageManager:
         missing = []
         present = []
         for k in manifest:
-            p = get_image_path(k if k in IMAGES else k)
-            if os.path.exists(p):
+            try:
+                p = get_image_path(k if k in IMAGES else k)
+            except Exception:
+                p = None
+            # Only check filesystem existence if we got a path back
+            if p and os.path.exists(p):
                 present.append(k)
             else:
                 missing.append(k)
@@ -324,7 +329,8 @@ def load_image_cached(path_or_key: str, size: Optional[Tuple[int,int]] = None, s
     """Load (or fetch cached) image. Accepts symbolic key in IMAGES or file path.
     Auto-reloads if file mtime changed. Returns None if not found.
     """
-    cache_key = f"{path_or_key}|{size[0]}x{size[1]}" if size else path_or_key
+    # Use the same key helper as ImageManager so cache keys match
+    cache_key = _key(path_or_key, size)
     if cache_key in _image_surface_cache:
         return _image_surface_cache[cache_key]
     img = image_manager.load_image(path_or_key, size=size, smooth=smooth, colorkey=colorkey)

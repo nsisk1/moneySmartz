@@ -1,11 +1,17 @@
 import pygame
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button, draw_vertical_gradient
-from moneySmarts.screens.financial_screens import DepositScreen, WithdrawScreen, BankAccountScreen, SavingsDetailsScreen, BankDetailsScreen
+import importlib
+try:
+    financial_screens_mod = importlib.import_module('moneySmarts.screens.financial_screens')
+except Exception:
+    financial_screens_mod = None
 import os
 import logging
 from moneySmarts.models import BankAccount
 from moneySmarts.images import get_image_path
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
+from moneySmarts.ui_helpers import ModalPopup
 
 _BANK_BACKGROUND_PATH = None
 _BANK_BACKGROUND_SURFACES = {}
@@ -100,6 +106,8 @@ class BankScreen(Screen):
         self.status_color = WHITE
         _find_bank_interior_path()
         self.background = None
+        # themed background (UI image key) - will be used as fallback if bank interior not found
+        self._background_original = load_ui_background('BANK_BG')
 
     def create_buttons(self):
         button_specs = [
@@ -141,22 +149,64 @@ class BankScreen(Screen):
             self.buttons.append(btn)
 
     def go_to_deposit(self):
-        self.game.gui_manager.set_screen(DepositScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'DepositScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.DepositScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'DepositScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open DepositScreen')
 
     def go_to_withdraw(self):
-        self.game.gui_manager.set_screen(WithdrawScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'WithdrawScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.WithdrawScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'WithdrawScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open WithdrawScreen')
 
     def go_to_deposit_savings(self):
-        self.game.gui_manager.set_screen(DepositToSavingsScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'DepositToSavingsScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.DepositToSavingsScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'DepositToSavingsScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open DepositToSavingsScreen')
 
     def go_to_view_balance(self):
-        self.game.gui_manager.set_screen(BankDetailsScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'BankDetailsScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.BankDetailsScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'BankDetailsScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open BankDetailsScreen')
 
     def go_to_view_savings(self):
-        self.game.gui_manager.set_screen(SavingsDetailsScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'SavingsDetailsScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.SavingsDetailsScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'SavingsDetailsScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open SavingsDetailsScreen')
 
     def go_to_open_account(self):
-        self.game.gui_manager.set_screen(BankAccountScreen(self.game))
+        if financial_screens_mod and hasattr(financial_screens_mod, 'BankAccountScreen'):
+            self.game.gui_manager.set_screen(financial_screens_mod.BankAccountScreen(self.game))
+        else:
+            try:
+                mod = importlib.import_module('moneySmarts.screens.financial_screens')
+                self.game.gui_manager.set_screen(getattr(mod, 'BankAccountScreen')(self.game))
+            except Exception:
+                logging.exception('Failed to open BankAccountScreen')
 
     def go_back(self):
         from moneySmarts.screens.game_screen import GameScreen
@@ -192,12 +242,25 @@ class BankScreen(Screen):
                     except Exception:
                         draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
                 else:
-                    draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
+                    # fallback to themed background if available
+                    if self._background_original:
+                        draw_background(surface, self._background_original, default_color=BG_TOP)
+                    else:
+                        draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
             else:
-                draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
+                try:
+                    if self._background_original:
+                        draw_background(surface, self._background_original, default_color=BG_TOP)
+                    else:
+                        draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
+                except Exception:
+                    surface.fill(BG_TOP)
         except Exception:
             try:
-                draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
+                if self._background_original:
+                    draw_background(surface, self._background_original, default_color=BG_TOP)
+                else:
+                    draw_vertical_gradient(surface, (0, 0, sw, sh), BG_TOP, BG_BOTTOM)
             except Exception:
                 surface.fill(BG_TOP)
 
@@ -276,6 +339,8 @@ class DepositToSavingsScreen(Screen):
         self.debug_font = pygame.font.SysFont('Arial', 14)
         self.input_active = False
         self.input_text = ""
+        # modal dialog shown after actions (ModalPopup)
+        self.modal = None
         self.status_message = None
         self.status_color = BLACK
         self.interest_rate = 0.02
@@ -286,6 +351,19 @@ class DepositToSavingsScreen(Screen):
         self.background = None
 
     def handle_events(self, events):
+        # If a modal is present, let it consume events first
+        if getattr(self, 'modal', None):
+            old_modal = self.modal
+            handled = False
+            try:
+                handled = old_modal.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                # only clear if the modal wasn't replaced by the callback
+                if getattr(self, 'modal', None) is old_modal:
+                    self.modal = None
+                return
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -311,13 +389,18 @@ class DepositToSavingsScreen(Screen):
                 player.savings_account.interest_rate = self.interest_rate
                 player.savings_account.deposit(amount)
                 interest = player.savings_account.apply_interest()
-                self.status_message = f"Deposited ${amount:.2f} (+${interest:.2f} interest)"
+                msg = f"Deposited ${amount:.2f} (+${interest:.2f} interest)"
+                # Show a centered modal confirmation
+                self.modal = ModalPopup("Deposit Successful", msg, on_ok=lambda: setattr(self, 'modal', None))
+                # Also set status_color for non-modal fallback
                 self.status_color = SUCCESS
             else:
-                self.status_message = "Invalid amount."
+                msg = "Invalid amount."
+                self.modal = ModalPopup("Deposit Failed", msg, on_ok=lambda: setattr(self, 'modal', None))
                 self.status_color = DANGER
         except Exception:
-            self.status_message = "Invalid input."
+            msg = "Invalid input."
+            self.modal = ModalPopup("Deposit Failed", msg, on_ok=lambda: setattr(self, 'modal', None))
             self.status_color = DANGER
         self.input_text = ""
 
@@ -332,7 +415,12 @@ class DepositToSavingsScreen(Screen):
         pygame.draw.rect(surface, CARD_BORDER, input_box, 2, border_radius=8)
         input_surface = self.text_font.render(self.input_text, True, BLACK)
         surface.blit(input_surface, (input_box.x + 10, input_box.y + 10))
-        if self.status_message:
+        # If we have a modal, draw it centered and return early
+        if getattr(self, 'modal', None):
+            self.modal.draw(surface)
+            return
+        # Fallback inline status message
+        if getattr(self, 'status_message', None):
             status_surface = self.text_font.render(self.status_message, True, self.status_color)
             surface.blit(status_surface, (40, 240))
         player = self.game.player

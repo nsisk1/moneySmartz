@@ -3,6 +3,7 @@ from moneySmarts.ui_helpers import ModalPopup
 
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 # Define the shop items with prices and descriptions
 # Using constants imported from moneySmarts.constants
@@ -22,7 +23,6 @@ SHOP_ITEMS = [
 class ShopScreen(Screen):
     def __init__(self, game):
         super().__init__(game)
-        self.ok_btn_rect = None
         self.popup_back_btn = None
         self.pay_credit_btn = None
         self.pay_bank_btn = None
@@ -40,6 +40,8 @@ class ShopScreen(Screen):
         self.insufficient_text = ""
         self.insufficient_ok_btn = None
         self.modal_popup = None
+        # load themed background for Shop
+        self._background_original = load_ui_background('SHOP_BG')
 
     def create_buttons(self):
         self.buttons = []
@@ -97,13 +99,15 @@ class ShopScreen(Screen):
 
     def _clear_modal(self):
         self.modal_popup = None
+        self.popup = None
         # reset any transient flags
         self.selected_item = None
         self.message = ""
 
     def pay_cash(self):
         if not self.selected_item:
-            self.message = "Select an item first."
+            # Inform user to select an item using a modal popup
+            self.modal_popup = ModalPopup("Select Item", "Select an item first.", on_ok=self._clear_modal)
             return
         price = self.selected_item['price']
         cash_before = self.game.player.cash
@@ -122,13 +126,14 @@ class ShopScreen(Screen):
             )
             # Show confirmation as modal
             self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
+            self.popup = self.modal_popup
             self.show_payment_popup = False
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, cash_before)
 
     def pay_bank(self):
         if not self.selected_item:
-            self.message = "Select an item first."
+            self.modal_popup = ModalPopup("Select Item", "Select an item first.", on_ok=self._clear_modal)
             return
         acct = self.game.player.bank_account
         price = self.selected_item['price']
@@ -146,13 +151,14 @@ class ShopScreen(Screen):
                 f"Bought {self.selected_item['name']} from bank!"
             )
             self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
+            self.popup = self.modal_popup
             self.show_payment_popup = False
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, bank_before)
 
     def pay_credit(self):
         if not self.selected_item:
-            self.message = "Select an item first."
+            self.modal_popup = ModalPopup("Select Item", "Select an item first.", on_ok=self._clear_modal)
             return
         card = self.game.player.credit_card
         price = self.selected_item['price']
@@ -170,6 +176,7 @@ class ShopScreen(Screen):
                 f"Bought {self.selected_item['name']} on credit!"
             )
             self.modal_popup = ModalPopup("Purchased", self.confirmation_text, on_ok=self._clear_modal)
+            self.popup = self.modal_popup
             self.show_payment_popup = False
         else:
             self.show_insufficient_funds_popup(self.selected_item['name'], price, credit_before)
@@ -196,18 +203,23 @@ class ShopScreen(Screen):
         """Handle a list of pygame events for the shop screen (GUI manager calls this)."""
         # If modal popup present, delegate to it first
         if getattr(self, 'modal_popup', None):
-            handled = self.modal_popup.handle_events(events)
+            old = self.modal_popup
+            try:
+                handled = old.handle_events(events)
+            except Exception:
+                handled = False
             if handled:
-                # modal on_ok may clear itself; ensure we reset flags
+                # if modal cleared by callback, reset transient state
                 if getattr(self, 'modal_popup', None) is None:
                     self.selected_item = None
                     self.message = ""
                 return
-        # otherwise fall back to previous handling
+
+        # Build mouse state and check for keyboard back press
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = False
         for event in events:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if event.type == pygame.MOUSEBUTTONDOWN and getattr(event, 'button', None) == 1:
                 mouse_click = True
             if event.type == pygame.KEYDOWN and event.key in [pygame.K_ESCAPE, pygame.K_BACKSPACE]:
                 # treat back as go_back
@@ -243,10 +255,14 @@ class ShopScreen(Screen):
                 return
 
     def draw(self, surface):
-        surface.fill(BG_TOP)
+        draw_background(surface, self._background_original, default_color=BG_TOP)
         title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         title = title_font.render("Shop", True, PRIMARY)
         surface.blit(title, (60, 40))
+        # Draw modal popup first if present so it overlays everything and prevents other UI from drawing
+        if getattr(self, 'modal_popup', None):
+            self.modal_popup.draw(surface)
+            return
         # Items panel
         panel = pygame.Rect(360, 120, SCREEN_WIDTH - 420, SCREEN_HEIGHT - 180)
         pygame.draw.rect(surface, CARD_BG, panel, border_radius=12)
@@ -263,26 +279,18 @@ class ShopScreen(Screen):
         if self.main_back_btn:
             self.main_back_btn.draw(surface)
         msg_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        # Show message as popup if not enough funds
+        # Message bar (non-modal) shown at bottom unless it's an error handled by a modal
         if self.message and ("Not enough" in self.message or "low" in self.message):
-            popup_rect = pygame.Rect(250, 250, 520, 160)
-            pygame.draw.rect(surface, (255, 240, 240), popup_rect, border_radius=12)
-            pygame.draw.rect(surface, DANGER, popup_rect, 3, border_radius=12)
-            msg = msg_font.render(self.message, True, DANGER)
-            surface.blit(msg, (popup_rect.x + 40, popup_rect.y + 40))
-            # Draw OK button centered at bottom of popup
-            ok_btn_width, ok_btn_height = 140, 40
-            ok_btn_x = popup_rect.x + (popup_rect.width - ok_btn_width) // 2
-            ok_btn_y = popup_rect.y + popup_rect.height - ok_btn_height - 20
-            ok_btn_rect = pygame.Rect(ok_btn_x, ok_btn_y, ok_btn_width, ok_btn_height)
-            pygame.draw.rect(surface, SUCCESS, ok_btn_rect, border_radius=8)
-            ok_text = msg_font.render("OK", True, WHITE)
-            surface.blit(ok_text, (ok_btn_rect.x + 45, ok_btn_rect.y + 5))
-            self.ok_btn_rect = ok_btn_rect
-            return  # Prevent drawing other popups/buttons
+            # convert to modal if not already one
+            if not getattr(self, 'modal_popup', None):
+                self.modal_popup = ModalPopup("Notice", self.message, on_ok=self._clear_modal)
+                # draw modal next frame via early return
+                self.modal_popup.draw(surface)
+                return
         else:
-            msg = msg_font.render(self.message, True, DANGER if "Not" in self.message else SUCCESS)
-            surface.blit(msg, (60, SCREEN_HEIGHT - 60))
+            if self.message:
+                msg = msg_font.render(self.message, True, DANGER if "Not" in self.message else SUCCESS)
+                surface.blit(msg, (60, SCREEN_HEIGHT - 60))
         if self.selected_item:
             sel_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
             sel_msg = sel_font.render(f"Selected: {self.selected_item['name']}", True, BLACK)
@@ -316,49 +324,15 @@ class ShopScreen(Screen):
                 item_rect = item_surface.get_rect(left=SCREEN_WIDTH // 2 - 200, top=SCREEN_HEIGHT // 2 - 90 + i * 28)
                 surface.blit(item_surface, item_rect)
             self.inventory_popup_btn.draw(surface)
-        # Draw confirmation popup if needed
-        if self.show_confirmation_popup:
-            msg_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-            popup_rect = pygame.Rect(200, 180, 500, 280)
-            pygame.draw.rect(surface, (245, 255, 240), popup_rect, border_radius=12)
-            pygame.draw.rect(surface, ACCENT, popup_rect, 3, border_radius=12)
-            lines = self.confirmation_text.split('\n')
-            for i, line in enumerate(lines):
-                line_surf = msg_font.render(line, True, BLACK)
-                surface.blit(line_surf, (popup_rect.x + 30, popup_rect.y + 30 + i * 35))
-            # Draw OK button centered at bottom of popup
-            ok_btn_width, ok_btn_height = 140, 40
-            ok_btn_x = popup_rect.x + (popup_rect.width - ok_btn_width) // 2
-            ok_btn_y = popup_rect.y + popup_rect.height - ok_btn_height - 20
-            ok_btn_rect = pygame.Rect(ok_btn_x, ok_btn_y, ok_btn_width, ok_btn_height)
-            pygame.draw.rect(surface, SUCCESS, ok_btn_rect, border_radius=8)
-            ok_text = msg_font.render("OK", True, WHITE)
-            surface.blit(ok_text, (ok_btn_rect.x + 45, ok_btn_rect.y + 5))
-            self.ok_btn_rect = ok_btn_rect
-            return  # Prevent drawing other popups/buttons
-        else:
-            self.ok_btn_rect = None
-        # Draw insufficient funds popup if needed
-        if self.show_insufficient_popup and self.insufficient_text:
-            popup_rect = pygame.Rect(SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT // 2 - 100, 440, 180)
-            pygame.draw.rect(surface, (255, 240, 240), popup_rect, border_radius=12)
-            pygame.draw.rect(surface, DANGER, popup_rect, 3, border_radius=12)
-            font = pygame.font.SysFont('Arial', 24, bold=True)
-            lines = self.insufficient_text.split('\n')
-            for i, line in enumerate(lines):
-                text_surf = font.render(line, True, DANGER)
-                surface.blit(text_surf, (popup_rect.x + 30, popup_rect.y + 26 + i * 32))
-            if self.insufficient_ok_btn:
-                self.insufficient_ok_btn.draw(surface)
+        # Confirmation and insufficient-funds dialogs are handled by `self.modal_popup` when present
+        # (modal drawn earlier if set). No manual drawing required here
 
     def handle_event(self, event):
-        # Handle OK button for insufficient funds popup and confirmation popup
-        if (self.show_confirmation_popup or (self.message and ("Not enough" in self.message))) and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mouse_pos = pygame.mouse.get_pos()
-            if self.ok_btn_rect and self.ok_btn_rect.collidepoint(mouse_pos):
-                self.show_confirmation_popup = False
-                self.confirmation_text = ""
-                self.selected_item = None
-                self.message = ""
-                self.game.gui_manager.set_screen(ShopScreen(self.game))
-                return
+        # Delegate single-event handling into modal if present
+        if getattr(self, 'modal_popup', None):
+            try:
+                self.modal_popup.handle_events([event])
+            except Exception:
+                pass
+            return
+        # otherwise no-op; full event lists handled by handle_events

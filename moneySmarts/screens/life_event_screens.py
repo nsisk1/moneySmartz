@@ -1,10 +1,10 @@
 import pygame
 import random
-import os
-from pygame.locals import *
 from moneySmarts.constants import *
-from moneySmarts.ui import Screen, Button, TextInput
-from moneySmarts.models import Loan, Asset, Card
+from moneySmarts.ui import Screen, Button
+from moneySmarts.models import Loan, Asset
+from moneySmarts.image_manager import image_manager
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 BROWN = (139, 69, 19)
 
@@ -19,6 +19,8 @@ class HighSchoolGraduationScreen(Screen):
         self.recurring_bill_message = None
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
+        # themed background
+        self._background_original = load_ui_background('LIFE_EVENT_BG')
 
         # Buttons
         college_button = Button(
@@ -48,17 +50,19 @@ class HighSchoolGraduationScreen(Screen):
         self.buttons = [college_button, trade_button, work_button]
 
     def show_recurring_bill_popup(self, bill_name, amount):
-        # Simple recurring bill popup logic
+        # Use ModalPopup for recurring bill notifications
+        from moneySmarts.ui_helpers import ModalPopup
         self.recurring_bill_message = f"New recurring bill: {bill_name} - ${amount}/month."
-        self.show_recurring_bill = True
-        self.recurring_bill_btn = Button(
-            SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 40, 200, 50, "OK", action=self.close_recurring_bill_popup
-        )
+        self.modal_popup = ModalPopup("New Recurring Bill", self.recurring_bill_message, on_ok=self._clear_recurring_bill)
 
     def close_recurring_bill_popup(self):
-        self.show_recurring_bill = False
+        # legacy: clear flags
+        self.modal_popup = None
         self.recurring_bill_message = ""
-        self.recurring_bill_btn = None
+
+    def _clear_recurring_bill(self):
+        self.modal_popup = None
+        self.recurring_bill_message = ""
 
     def go_to_college(self):
         """Choose to go to college."""
@@ -113,7 +117,7 @@ class HighSchoolGraduationScreen(Screen):
 
     def draw(self, surface):
         """Draw the high school graduation screen with modern UI."""
-        surface.fill(BG_TOP)
+        draw_background(surface, self._background_original, default_color=BG_TOP)
 
         # Title
         title_surface = self.title_font.render("HIGH SCHOOL GRADUATION", True, PRIMARY)
@@ -160,15 +164,10 @@ class HighSchoolGraduationScreen(Screen):
         for button in self.buttons:
             button.draw(surface)
 
-        # Draw recurring bill popup if needed
-        if hasattr(self, 'show_recurring_bill') and self.show_recurring_bill:
-            popup_rect = pygame.Rect(SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT // 2 - 100, 440, 180)
-            pygame.draw.rect(surface, CARD_BG, popup_rect, border_radius=12)
-            pygame.draw.rect(surface, CARD_BORDER, popup_rect, 2, border_radius=12)
-            msg_surface = self.text_font.render(self.recurring_bill_message, True, BLACK)
-            msg_rect = msg_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-            surface.blit(msg_surface, msg_rect)
-            self.recurring_bill_btn.draw(surface)
+        # If there's an active modal (recurring bill or other), draw it
+        if getattr(self, 'modal_popup', None):
+            self.modal_popup.draw(surface)
+            return
 
     def handle_events(self, events):
         for event in events:
@@ -182,20 +181,28 @@ class HighSchoolGraduationScreen(Screen):
                         if button.action:
                             button.action()
                             return
-        # Handle recurring bill popup
-        if hasattr(self, 'show_recurring_bill') and self.show_recurring_bill:
-            mouse_pos = pygame.mouse.get_pos()
-            mouse_click = False
-            for event in events:
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    mouse_click = True
-            action = self.recurring_bill_btn.update(mouse_pos, mouse_click)
-            if callable(action):
-                action()
+        # If a modal popup is present, delegate to it first
+        if getattr(self, 'modal_popup', None):
+            old = self.modal_popup
+            try:
+                handled = old.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                if getattr(self, 'modal_popup', None) is None:
+                    self.recurring_bill_message = ""
                 return
 
     def show_insufficient_funds_popup(self, param, cost, available):
-        pass
+        # Display an insufficient funds modal using ModalPopup
+        try:
+            from moneySmarts.ui_helpers import ModalPopup
+            msg = f"Insufficient funds for {param}!\nRequired: ${cost:,}\nAvailable: ${available:,}"
+            self.modal_popup = ModalPopup("Insufficient Funds", msg, on_ok=lambda: setattr(self, 'modal_popup', None))
+        except Exception:
+            # fallback: set a simple flag so calling code can still detect an issue
+            self.show_insufficient_funds = True
+            self.insufficient_funds_message = f"Insufficient funds for {param}! Required: ${cost:,}. Available: ${available:,}"
 
 
 class CollegeGraduationScreen(Screen):
@@ -208,6 +215,7 @@ class CollegeGraduationScreen(Screen):
         # Title
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
+        self._background_original = load_ui_background('LIFE_EVENT_BG')
 
         # Buttons
         continue_button = Button(
@@ -234,8 +242,7 @@ class CollegeGraduationScreen(Screen):
 
     def draw(self, surface):
         """Draw the college graduation screen."""
-        # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("COLLEGE GRADUATION", True, BLUE)
@@ -291,6 +298,7 @@ class CarPurchaseScreen(Screen):
         # Title
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
+        self._background_original = load_ui_background('LIFE_EVENT_BG')
 
         # Car options
         self.car_options = [
@@ -324,12 +332,14 @@ class CarPurchaseScreen(Screen):
         if self.state == 0:
             # Car selection buttons
             for i, car in enumerate(self.car_options):
+                def make_car_action(c):
+                    return lambda: self.select_car(c)
                 car_button = Button(
                     SCREEN_WIDTH // 2 - 150,
                     250 + i * 60,
                     300, 50,
                     f"{car['name']} - ${car['value']}",
-                    action=lambda c=car: self.select_car(c)
+                    action=make_car_action(car)
                 )
                 self.buttons.append(car_button)
 
@@ -384,19 +394,22 @@ class CarPurchaseScreen(Screen):
             self.buttons.append(confirm_button)
 
     def show_insufficient_funds_popup(self, item_name, required, available):
-        self.insufficient_funds_message = (
+        # Use ModalPopup for insufficient funds messages
+        msg = (
             f"Insufficient funds for {item_name}!\n"
             f"Required: ${required:,}\nAvailable: ${available:,}"
         )
-        self.show_insufficient_funds = True
-        self.insufficient_funds_btn = Button(
-            SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 40, 200, 50, "OK", action=self.close_insufficient_funds_popup
-        )
+        from moneySmarts.ui_helpers import ModalPopup
+        self.modal_popup = ModalPopup("Insufficient Funds", msg, on_ok=self._clear_insufficient_funds)
 
     def close_insufficient_funds_popup(self):
-        self.show_insufficient_funds = False
+        # legacy
+        self.modal_popup = None
         self.insufficient_funds_message = None
-        self.insufficient_funds_btn = None
+
+    def _clear_insufficient_funds(self):
+        self.modal_popup = None
+        self.insufficient_funds_message = None
 
     # --- UNIVERSAL PURCHASE CHECK ---
     def can_afford(self, amount, source):
@@ -463,8 +476,7 @@ class CarPurchaseScreen(Screen):
 
     def draw(self, surface):
         """Draw the car purchase screen."""
-        # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("CAR PURCHASE OPPORTUNITY", True, BLUE)
@@ -535,18 +547,10 @@ class CarPurchaseScreen(Screen):
         for button in self.buttons:
             button.draw(surface)
 
-        # Draw insufficient funds popup if needed
-        if self.show_insufficient_funds and self.insufficient_funds_message:
-            popup_rect = pygame.Rect(SCREEN_WIDTH // 2 - 220, SCREEN_HEIGHT // 2 - 100, 440, 180)
-            pygame.draw.rect(surface, (220, 50, 50), popup_rect, border_radius=12)
-            pygame.draw.rect(surface, (0, 0, 0), popup_rect, 3, border_radius=12)
-            font = pygame.font.SysFont('Arial', 28, bold=True)
-            lines = self.insufficient_funds_message.split('\n')
-            for i, line in enumerate(lines):
-                text_surf = font.render(line, True, (255, 255, 255))
-                surface.blit(text_surf, (popup_rect.x + 30, popup_rect.y + 30 + i * 38))
-            if self.insufficient_funds_btn:
-                self.insufficient_funds_btn.draw(surface)
+        # If modal present (insufficient funds or other), draw it and return early
+        if getattr(self, 'modal_popup', None):
+            self.modal_popup.draw(surface)
+            return
 
 class HousingScreen(Screen):
     """
@@ -558,6 +562,7 @@ class HousingScreen(Screen):
         # Title
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
+        self._background_original = load_ui_background('LIFE_EVENT_BG')
 
         # House options
         self.house_options = [
@@ -589,12 +594,14 @@ class HousingScreen(Screen):
         if self.state == 0:
             # House selection buttons
             for i, house in enumerate(self.house_options):
+                def make_house_action(h):
+                    return lambda: self.select_house(h)
                 house_button = Button(
                     SCREEN_WIDTH // 2 - 150,
                     250 + i * 60,
                     300, 50,
                     f"{house['name']} - ${house['value']}",
-                    action=lambda h=house: self.select_house(h)
+                    action=make_house_action(house)
                 )
                 self.buttons.append(house_button)
 
@@ -811,8 +818,7 @@ class HousingScreen(Screen):
 
     def draw(self, surface):
         """Draw the housing screen."""
-        # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("HOUSE PURCHASE OPPORTUNITY", True, BLUE)
@@ -1205,4 +1211,3 @@ class FamilyPlanningScreen(Screen):
                 positions.append((x, y))
 
         return positions
-

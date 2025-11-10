@@ -1,8 +1,10 @@
 import pygame
-import os
+from typing import Optional
+
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
 from moneySmarts.ui_helpers import ModalPopup, create_selection_buttons
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 HOME_OPTIONS = [
     {"name": "Starter Home", "price": 3000, "desc": "A cozy starter home. Affordable and simple."},
@@ -17,6 +19,7 @@ class HomePurchaseScreen(Screen):
         self.message = ""
         self.modal_popup = None  # ModalPopup instance when a popup is active
         self.create_buttons()
+        self._background_original = load_ui_background('HOME_PURCHASE_BG')
 
     def create_buttons(self):
         labels = [f"{h['name']} - ${h['price']}" for h in HOME_OPTIONS]
@@ -91,7 +94,7 @@ class HomePurchaseScreen(Screen):
         pygame.draw.rect(surface, BLACK, (x + 85, y + 40, 20, 20), 2)
 
     def draw(self, surface):
-        surface.fill(BG_TOP)
+        draw_background(surface, self._background_original, default_color=BG_TOP)
         font = pygame.font.SysFont('Arial', FONT_LARGE)
         title = font.render("Choose Your Home", True, PRIMARY)
         surface.blit(title, (80, 60))

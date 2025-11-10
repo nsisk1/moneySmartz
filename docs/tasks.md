@@ -44,4 +44,4 @@ This document contains a detailed list of actionable improvement tasks for the M
 - Add developer onboarding guide
 
 ## Bug Fixes
-- Check entire project for bugs and resolve them
+- Check the entire project for bugs and resolve them

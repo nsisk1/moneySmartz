@@ -1,3 +1,10 @@
+"""Config manager for MoneySmarts.
+
+Provides a ConfigManager which loads defaults from a packaged JSON file
+and optionally merges user overrides from a user JSON file. Supports
+atomic writes when saving user settings.
+"""
+
 import json
 import os
 import logging
@@ -10,7 +17,7 @@ class ConfigManager:
     Supports default settings and user-customizable overrides.
 
     Attributes:
-        default_path (str): Path to the default configuration file.
+           default_path (str): Path to the default configuration file.
         user_path (str): Path to the user configuration file.
         config (dict): Dictionary holding the merged configuration.
     """

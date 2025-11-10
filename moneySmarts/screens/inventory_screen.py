@@ -1,16 +1,10 @@
 import pygame
 from moneySmarts.ui import Screen, Button
 from moneySmarts.constants import *
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 class InventoryScreen(Screen):
-    """
-    InventoryScreen displays the player's purchased assets in a scrollable list.
-    Allows the player to view asset details and return to the main game screen.
-
-    Attributes:
-        game: Reference to the main game object.
-        back_btn: Button to return to the previous screen.
-    """
+    """Inventory screen showing player's purchased assets and a back button."""
     def __init__(self, game):
         """
         Initialize the inventory screen and create the back button.
@@ -19,6 +13,7 @@ class InventoryScreen(Screen):
         """
         super().__init__(game)
         self.back_btn = Button(40, 40, 120, 40, "Back", action=self.go_back)
+        self._background_original = load_ui_background('INVENTORY_BG')
 
     def go_back(self):
         """
@@ -33,7 +28,7 @@ class InventoryScreen(Screen):
         Args:
             surface: The pygame surface to draw on.
         """
-        surface.fill((245, 245, 255))
+        draw_background(surface, self._background_original, default_color=(245, 245, 255))
         font = pygame.font.SysFont('Arial', 32)
         title = font.render("Inventory", True, BLUE)
         surface.blit(title, (40, 100))

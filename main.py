@@ -17,11 +17,11 @@ except ImportError:
     # dotenv not installed, which is fine if not using a .env file.
     pass
 
-# --- Python version guard (pygame wheels not yet for 3.14; project targets 3.11/3.12) ---
-if not ((3, 11) <= sys.version_info < (3, 13)):
+# --- Python version guard ---
+if sys.version_info.major != 3 or sys.version_info.minor != 12:
     print(f"Unsupported Python version {sys.version.split()[0]} detected.\n"
-          "Use Python 3.11 or 3.12. (Current pyproject requires >=3.11,<3.13)\n"
-          "Fix: Install Python 3.12, recreate venv, then: pip install -r requirements.txt")
+          "This project requires Python 3.12.\n"
+          "Please configure your IDE to use a Python 3.12 interpreter for this project.")
     sys.exit(1)
 
 # Delay pygame import until after version check for clearer messaging

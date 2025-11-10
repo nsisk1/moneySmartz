@@ -1,12 +1,14 @@
 import pygame
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 class GameOverScreen(Screen):
     def __init__(self, game, reason=None):
         super().__init__(game)
         self.reason = reason or "Game Over! You can no longer continue."
         self.create_buttons()
+        self._background_original = load_ui_background('GAME_OVER_BG')
 
     def create_buttons(self):
         self.buttons = []
@@ -27,7 +29,7 @@ class GameOverScreen(Screen):
         exit()
 
     def draw(self, surface):
-        surface.fill((30, 30, 30))
+        draw_background(surface, self._background_original, default_color=(30, 30, 30))
         font = pygame.font.Font(None, 48)
         text = font.render(self.reason, True, (255, 0, 0))
         rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40))

@@ -1,8 +1,9 @@
-import os
+from typing import List
 import pygame
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
 from moneySmarts.ui_helpers import ModalPopup, create_selection_buttons
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 VEHICLE_OPTIONS = [
     {"name": "Used Car", "price": 1200, "desc": "Reliable but basic transportation."},
@@ -16,6 +17,7 @@ class VehiclePurchaseScreen(Screen):
         self.selected_vehicle = None
         self.message = ""
         self.modal_popup = None
+        self._background_original = load_ui_background('VEHICLE_PURCHASE_BG')
         self.create_buttons()
 
     def create_buttons(self):
@@ -26,6 +28,8 @@ class VehiclePurchaseScreen(Screen):
         self.buy_credit_btn = Button(600, 270, 180, 40, "Buy Credit", action=self.buy_credit)
         self.finance_btn = Button(600, 330, 180, 40, "Finance", action=self.finance_vehicle)
         self.back_btn = Button(600, 400, 120, 40, "Back", action=self.go_back)
+        # cached list for convenience
+        self._action_buttons: List[Button] = [self.buy_cash_btn, self.buy_bank_btn, self.buy_credit_btn, self.finance_btn, self.back_btn]
 
     def select_vehicle(self, idx):
         self.selected_vehicle = VEHICLE_OPTIONS[idx]
@@ -35,6 +39,36 @@ class VehiclePurchaseScreen(Screen):
         if not self.selected_vehicle:
             self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
             return
+        price = self.selected_vehicle['price']
+        msg = f"Confirm purchase of {self.selected_vehicle['name']} for ${price:.2f}?"
+        self.modal_popup = ModalPopup("Confirm Purchase", msg, on_ok=self._do_buy_cash)
+
+    def buy_bank(self):
+        if not self.selected_vehicle:
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
+            return
+        price = self.selected_vehicle['price']
+        msg = f"Confirm purchase of {self.selected_vehicle['name']} for ${price:.2f} from bank account?"
+        self.modal_popup = ModalPopup("Confirm Purchase", msg, on_ok=self._do_buy_bank)
+
+    def buy_credit(self):
+        if not self.selected_vehicle:
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
+            return
+        price = self.selected_vehicle['price']
+        msg = f"Confirm purchase of {self.selected_vehicle['name']} for ${price:.2f} charged to credit?"
+        self.modal_popup = ModalPopup("Confirm Purchase", msg, on_ok=self._do_buy_credit)
+
+    def finance_vehicle(self):
+        if not self.selected_vehicle:
+            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
+            return
+        price = self.selected_vehicle['price']
+        msg = f"Confirm financing {self.selected_vehicle['name']} for ${price:.2f}?"
+        self.modal_popup = ModalPopup("Confirm Finance", msg, on_ok=self._do_finance_vehicle)
+
+    # ---- actual transaction helpers invoked after user confirms ----
+    def _do_buy_cash(self):
         price = self.selected_vehicle['price']
         cash_before = getattr(self.game.player, 'cash', 0)
         if cash_before >= price:
@@ -55,10 +89,7 @@ class VehiclePurchaseScreen(Screen):
         else:
             self.modal_popup = ModalPopup("Insufficient", "Not enough cash.", on_ok=lambda: self._clear_message())
 
-    def buy_bank(self):
-        if not self.selected_vehicle:
-            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
-            return
+    def _do_buy_bank(self):
         acct = getattr(self.game.player, 'bank_account', None)
         price = self.selected_vehicle['price']
         bank_before = acct.balance if acct else 0
@@ -77,14 +108,10 @@ class VehiclePurchaseScreen(Screen):
             )
             self.modal_popup = ModalPopup("Purchased", popup_text, on_ok=self._post_purchase)
             self.selected_vehicle = None
-            # Navigate back to shop after purchase
         else:
             self.modal_popup = ModalPopup("Insufficient", "Not enough in bank account.", on_ok=lambda: self._clear_message())
 
-    def buy_credit(self):
-        if not self.selected_vehicle:
-            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
-            return
+    def _do_buy_credit(self):
         card = getattr(self.game.player, 'credit_card', None)
         price = self.selected_vehicle['price']
         credit_before = card.balance if card else 0
@@ -105,13 +132,9 @@ class VehiclePurchaseScreen(Screen):
         else:
             self.modal_popup = ModalPopup("Insufficient", "Not enough credit or no card.", on_ok=lambda: self._clear_message())
 
-    def finance_vehicle(self):
-        if not self.selected_vehicle:
-            self.modal_popup = ModalPopup("Select Vehicle", "Select a vehicle first.", on_ok=lambda: self._clear_message())
-            return
+    def _do_finance_vehicle(self):
         price = self.selected_vehicle['price']
         if hasattr(self.game.player, 'credit_score') and self.game.player.credit_score >= 650:
-            # keep loans in models format if available; this is a simple placeholder
             try:
                 from moneySmarts.models import Loan, Asset
                 loan = Loan("Auto", price, 0.05, 5)
@@ -119,7 +142,6 @@ class VehiclePurchaseScreen(Screen):
                 self.game.player.vehicle = self.selected_vehicle['name']
                 self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
             except Exception:
-                # fallback: minimal loan representation
                 self.game.player.loans.append({'type': 'vehicle', 'amount': price, 'name': self.selected_vehicle['name']})
                 from moneySmarts.models import Asset
                 self.game.player.assets.append(Asset("Car", self.selected_vehicle['name'], price))
@@ -156,16 +178,14 @@ class VehiclePurchaseScreen(Screen):
             pass
 
     def draw_vehicle_placeholder(self, surface, x, y, w=200, h=100, color=PRIMARY):
-        # Draw a simple vehicle placeholder
         car_rect = pygame.Rect(x, y, w, h)
         pygame.draw.rect(surface, color, car_rect, border_radius=12)
         pygame.draw.rect(surface, CARD_BORDER, car_rect, 2, border_radius=12)
-        # Wheels
         pygame.draw.circle(surface, BLACK, (x + int(w*0.25), y + h + 10), 14)
         pygame.draw.circle(surface, BLACK, (x + int(w*0.75), y + h + 10), 14)
 
     def draw(self, surface):
-        surface.fill(BG_TOP)
+        draw_background(surface, self._background_original)
         font = pygame.font.SysFont('Arial', FONT_LARGE)
         title = font.render("Choose Your Vehicle", True, PRIMARY)
         surface.blit(title, (80, 60))
@@ -198,9 +218,13 @@ class VehiclePurchaseScreen(Screen):
     def handle_events(self, events):
         # Modal first
         if self.modal_popup:
-            handled = self.modal_popup.handle_events(events)
+            # Preserve reference so if the on_ok creates a new popup we don't clear it
+            old_popup = self.modal_popup
+            handled = old_popup.handle_events(events)
             if handled:
-                self.modal_popup = None
+                # Only clear if the popup wasn't replaced by the callback
+                if getattr(self, 'modal_popup', None) is old_popup:
+                    self.modal_popup = None
             return
 
         mouse_pos = pygame.mouse.get_pos()
@@ -221,7 +245,7 @@ class VehiclePurchaseScreen(Screen):
                 return
 
         # Check purchase/finance/back buttons
-        for btn in [self.buy_cash_btn, self.buy_bank_btn, self.buy_credit_btn, self.finance_btn, self.back_btn]:
+        for btn in self._action_buttons:
             action = btn.update(mouse_pos, mouse_click)
             if action:
                 action()

@@ -6,6 +6,7 @@ import os
 import logging
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button, TextInput
+from moneySmarts.ui_helpers import ModalPopup
 from moneySmarts.sound_manager import SoundManager
 from moneySmarts.exceptions import GameError
 from moneySmarts.image_manager import image_manager
@@ -198,30 +199,18 @@ class TitleScreen(Screen):
             button.draw(surface)
 
         if self.show_confirm:
-            self.draw_confirm_dialog(surface)
-
-    def draw_confirm_dialog(self, surface):
-        dialog_width, dialog_height = 480, 200
-        dialog_x = (SCREEN_WIDTH - dialog_width) // 2
-        dialog_y = (SCREEN_HEIGHT - dialog_height) // 2
-        pygame.draw.rect(surface, CARD_BG, (dialog_x, dialog_y, dialog_width, dialog_height), border_radius=12)
-        pygame.draw.rect(surface, CARD_BORDER, (dialog_x, dialog_y, dialog_width, dialog_height), 2, border_radius=12)
-
-        font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        text_surface = font.render(self.confirm_message, True, BLACK)
-        text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20))
-        surface.blit(text_surface, text_rect)
-
-        if self.confirm_action:
-            yes_button = Button(dialog_x + 60, dialog_y + 120, 140, 44, "Yes", action=self.confirm_yes)
-            no_button = Button(dialog_x + 280, dialog_y + 120, 140, 44, "No", action=self.confirm_no)
-            yes_button.draw(surface)
-            no_button.draw(surface)
-            self.confirm_buttons = [yes_button, no_button]
-        else:
-            ok_button = Button(dialog_x + (dialog_width - 140) // 2, dialog_y + 120, 140, 44, "OK", action=self.confirm_no)
-            ok_button.draw(surface)
-            self.confirm_buttons = [ok_button]
+            # Use ModalPopup to show confirmation dialogs to avoid duplicate drawing logic
+            if not getattr(self, 'modal_popup', None):
+                # Create modal with Yes/No if an action is present, otherwise single OK
+                if self.confirm_action:
+                    self.modal_popup = ModalPopup("Confirm", self.confirm_message, on_ok=self.confirm_yes, on_cancel=self.confirm_no)
+                else:
+                    self.modal_popup = ModalPopup("Notice", self.confirm_message, on_ok=self.confirm_no)
+            # draw the modal (ModalPopup.draw handles layout)
+            try:
+                self.modal_popup.draw(surface)
+            except Exception:
+                pass
 
     def confirm_yes(self):
         if self.confirm_action:
@@ -237,24 +226,31 @@ class TitleScreen(Screen):
 
     def handle_events(self, events):
         super().handle_events(events)
+        # If modal popup present (confirmation), delegate events to it first
+        if getattr(self, 'modal_popup', None):
+            try:
+                handled = self.modal_popup.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                # If modal callback cleared the modal, reset confirm state
+                if getattr(self, 'modal_popup', None) is None:
+                    self.show_confirm = False
+                    self.confirm_action = None
+                    self.confirm_message = ""
+                return
+        # otherwise handle regular buttons
         mouse_pos = pygame.mouse.get_pos()
         mouse_click = False
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_click = True
-
-        if self.show_confirm and self.confirm_buttons:
-            for button in self.confirm_buttons:
-                action = button.update(mouse_pos, mouse_click)
-                if action:
-                    action()
-        else:
-            for button in self.buttons:
-                if button.text == "Save Game" and self.game.player is None:
-                    continue
-                action = button.update(mouse_pos, mouse_click)
-                if action:
-                    action()
+        for button in self.buttons:
+            if button.text == "Save Game" and self.game.player is None:
+                continue
+            action = button.update(mouse_pos, mouse_click)
+            if action:
+                action()
 
 
 class NameInputScreen(Screen):
@@ -263,7 +259,8 @@ class NameInputScreen(Screen):
     def __init__(self, game: 'Game'):
         super().__init__(game)
         self.background_image = None
-        self._background_original = image_manager.load_image('name_background.png')
+        # use canonical UI image key defined in moneySmarts.images
+        self._background_original = image_manager.load_image('NAME_BG')
         if self._background_original:
             self.background_image = self._background_original
         else:
@@ -334,14 +331,14 @@ class NameInputScreen(Screen):
             surface.fill(self.bg_color)
 
         if self.background_image:
-            title_surface = self.title_font.render("Enter Your Name", True, BLACK)
+            title_surface = self.title_font.render("Enter Your Name", True, WHITE)
             title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 60))
             surface.blit(title_surface, title_rect)
         else:
              card_rect = pygame.Rect(surface.get_width() // 2 - 220, surface.get_height() // 2 - 70, 440, 180)
              pygame.draw.rect(surface, CARD_BG, card_rect, border_radius=12)
              pygame.draw.rect(surface, CARD_BORDER, card_rect, 2, border_radius=12)
-             title_surface = self.title_font.render("Enter Your Name", True, BLACK)
+             title_surface = self.title_font.render("Enter Your Name", True, WHITE)
              title_rect = title_surface.get_rect(center=(surface.get_width() // 2, surface.get_height() // 2 - 50))
              surface.blit(title_surface, title_rect)
 

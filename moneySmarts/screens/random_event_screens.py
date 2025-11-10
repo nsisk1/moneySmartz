@@ -1,7 +1,7 @@
 import pygame
-from pygame.locals import *
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
 
 class RandomEventScreen(Screen):
     """Screen displayed when a random event occurs during gameplay."""
@@ -11,6 +11,7 @@ class RandomEventScreen(Screen):
         self.cash_effect = cash_effect
         self.font = pygame.font.SysFont('Arial', FONT_MEDIUM)
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE, bold=True)
+        self._background_original = load_ui_background('RANDOM_EVENT_BG')
         # Effect already applied in Game.trigger_random_event; prepare messages only
         if cash_effect > 0:
             self.result_message = f"You received ${cash_effect}!"
@@ -40,8 +41,8 @@ class RandomEventScreen(Screen):
     
     def draw(self, surface):
         """Draw the random event screen."""
-        surface.fill(WHITE)
-        
+        draw_background(surface, self._background_original, default_color=WHITE)
+
         # Draw event header
         header_rect = pygame.Rect(0, 0, SCREEN_WIDTH, 80)
         event_color = GREEN if self.cash_effect > 0 else RED

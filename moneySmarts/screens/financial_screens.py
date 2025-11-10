@@ -1,8 +1,11 @@
+from typing import NoReturn
 import pygame
 import random
 from moneySmarts.constants import *
 from moneySmarts.ui import Screen, Button, TextInput
 from moneySmarts.models import BankAccount, Card
+from moneySmarts.screens.screen_utils import load_ui_background, draw_background
+from moneySmarts.ui_helpers import ModalPopup
 
 class BankAccountScreen(Screen):
     """
@@ -17,6 +20,7 @@ class BankAccountScreen(Screen):
         # Title
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
         self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
+        self._background_original = load_ui_background('BANK_SCREEN_BG')
 
         # Account type selection
         self.selected_account_type = "Checking"
@@ -124,7 +128,7 @@ class BankAccountScreen(Screen):
     def draw(self, surface):
         """Draw the bank account screen."""
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Open a Bank Account", True, BLACK)
@@ -196,6 +200,7 @@ class BankDetailsScreen(Screen):
         )
 
         self.buttons = [back_button, scroll_up_button, scroll_down_button]
+        self._background_original = load_ui_background('BANK_SCREEN_BG')
 
     def scroll_up(self):
         """Scroll transaction history up."""
@@ -219,7 +224,7 @@ class BankDetailsScreen(Screen):
     def draw(self, surface):
         """Draw the bank details screen."""
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Bank Account Details", True, BLACK)
@@ -338,33 +343,33 @@ class DepositScreen(Screen):
         # Status message
         self.status_message = ""
         self.status_color = BLACK
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def make_deposit(self):
         """Make a deposit to the bank account."""
         try:
             amount = float(self.amount_input.text)
             if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Invalid Amount", "Please enter a positive amount.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
 
             if amount > self.game.player.cash:
-                self.status_message = "You don't have that much cash."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Insufficient Cash", "You don't have that much cash.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
 
             # Make deposit
             self.game.player.cash -= amount
             self.game.player.bank_account.deposit(amount)
 
-            self.status_message = f"Successfully deposited ${amount:.2f}."
-            self.status_color = GREEN
-
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Deposit Successful", f"Successfully deposited ${amount:.2f}.", on_ok=lambda: setattr(self, 'modal_popup', None))
             # Clear input
             self.amount_input.text = ""
         except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Invalid Input", "Please enter a valid number.", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def go_back(self):
         """Go back to the game screen."""
@@ -373,13 +378,22 @@ class DepositScreen(Screen):
 
     def handle_events(self, events):
         """Handle pygame events."""
+        # If modal present, delegate to it first
+        if getattr(self, 'modal_popup', None):
+            try:
+                handled = self.modal_popup.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                if getattr(self, 'modal_popup', None) is None:
+                    self.status_message = ""
+                return
         super().handle_events(events)
         self.amount_input.update(events)
 
     def draw(self, surface):
-        print("[DEBUG] DepositScreen.draw called")
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Deposit to Bank", True, BLACK)
@@ -402,15 +416,25 @@ class DepositScreen(Screen):
         # Draw amount input
         self.amount_input.draw(surface)
 
-        # Draw status message
+        # If a legacy status_message is present, show it as a modal for consistency
         if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
-            surface.blit(status_surface, status_rect)
+            try:
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Notice", self.status_message, on_ok=lambda: setattr(self, 'modal_popup', None))
+                self.status_message = ""
+            except Exception:
+                pass
 
         # Draw buttons
         for button in self.buttons:
             button.draw(surface)
+
+        # If modal present, draw it on top
+        if getattr(self, 'modal_popup', None):
+            try:
+                self.modal_popup.draw(surface)
+            except Exception:
+                pass
 
 class WithdrawScreen(Screen):
     """
@@ -456,33 +480,34 @@ class WithdrawScreen(Screen):
         # Status message
         self.status_message = ""
         self.status_color = BLACK
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
-    def make_withdrawal(self):
+    def make_withdrawal(self) -> None:
         """Make a withdrawal from the bank account."""
+        global ModalPopup
         try:
             amount = float(self.amount_input.text)
             if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Invalid Amount", "Please enter a positive amount.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
 
             if amount > self.game.player.bank_account.balance:
-                self.status_message = "You don't have that much in your account."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Insufficient Funds", "You don't have that much in your account.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
 
             # Make withdrawal
             self.game.player.bank_account.withdraw(amount)
             self.game.player.cash += amount
 
-            self.status_message = f"Successfully withdrew ${amount:.2f}."
-            self.status_color = GREEN
-
+            # Success modal
+            self.modal_popup = ModalPopup("Withdrawal Successful", f"Successfully withdrew ${amount:.2f}.", on_ok=lambda: setattr(self, 'modal_popup', None))
             # Clear input
             self.amount_input.text = ""
         except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Invalid Input", "Please enter a valid number.", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def go_back(self):
         """Go back to the game screen."""
@@ -491,13 +516,21 @@ class WithdrawScreen(Screen):
 
     def handle_events(self, events):
         """Handle pygame events."""
+        # If modal present, delegate to it first
+        if getattr(self, 'modal_popup', None):
+            try:
+                handled = self.modal_popup.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                return
         super().handle_events(events)
         self.amount_input.update(events)
 
     def draw(self, surface):
         """Draw the withdraw screen."""
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Withdraw from Bank", True, BLACK)
@@ -520,15 +553,25 @@ class WithdrawScreen(Screen):
         # Draw amount input
         self.amount_input.draw(surface)
 
-        # Draw status message
+        # Convert any legacy status_message into a modal
         if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
-            surface.blit(status_surface, status_rect)
+            try:
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Notice", self.status_message, on_ok=lambda: setattr(self, 'modal_popup', None))
+                self.status_message = ""
+            except Exception:
+                pass
 
         # Draw buttons
         for button in self.buttons:
             button.draw(surface)
+
+        # If modal present, draw it on top
+        if getattr(self, 'modal_popup', None):
+            try:
+                self.modal_popup.draw(surface)
+            except Exception:
+                pass
 
 class GetDebitCardScreen(Screen):
     """
@@ -561,6 +604,7 @@ class GetDebitCardScreen(Screen):
         )
 
         self.buttons = [get_card_button, back_button]
+        self._background_original = load_ui_background('DEBIT_SCREEN_BG')
 
     def get_debit_card(self):
         """Get a debit card and go back to the game screen."""
@@ -576,7 +620,7 @@ class GetDebitCardScreen(Screen):
     def draw(self, surface):
         """Draw the debit card screen."""
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Get a Debit Card", True, BLACK)
@@ -618,9 +662,6 @@ class GetDebitCardScreen(Screen):
         for button in self.buttons:
             button.draw(surface)
 
-# Placeholder classes for the remaining financial screens
-# These would be implemented similarly to the above screens
-
 class CreditCardScreen(Screen):
     """
     Screen for applying for a credit card.
@@ -629,6 +670,7 @@ class CreditCardScreen(Screen):
     
     def __init__(self, game):
         super().__init__(game)
+        self._background_original = load_ui_background('FINANCIAL_BG')
         self.font = pygame.font.SysFont('Arial', FONT_MEDIUM)
         self.title_font = pygame.font.SysFont('Arial', FONT_LARGE, bold=True)
         self.small_font = pygame.font.SysFont('Arial', FONT_SMALL)
@@ -725,7 +767,7 @@ class CreditCardScreen(Screen):
         self.buttons.append(details_button)
 
     def view_card_details(self):
-        from moneySmarts.screens.financial_screens import CreditCardDetailsScreen
+        # CreditCardDetailsScreen is defined in this module
         self.game.gui_manager.set_screen(CreditCardDetailsScreen(self.game))
 
     def draw(self, surface):
@@ -849,6 +891,7 @@ class CreditCardDetailsScreen(Screen):
         )
         
         self.buttons = [back_button, pay_button, scroll_up_button, scroll_down_button]
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def scroll_up(self):
         """Scroll transaction history up."""
@@ -999,10 +1042,6 @@ class PayCreditCardScreen(Screen):
             max_length=10
         )
         
-        # Status message
-        self.status_message = ""
-        self.status_color = BLACK
-        
         # Buttons
         min_payment_button = Button(
             SCREEN_WIDTH // 2 - 320,
@@ -1061,23 +1100,23 @@ class PayCreditCardScreen(Screen):
         try:
             amount = float(self.amount_input.text)
             if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Invalid Amount", "Please enter a positive amount.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
             if amount < self.min_payment:
-                self.status_message = f"Payment must be at least ${self.min_payment:.2f}."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup(f"Payment must be at least ${self.min_payment:.2f}.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
             if amount > self.game.player.credit_card.balance:
-                self.status_message = f"Payment cannot exceed balance of ${self.game.player.credit_card.balance:.2f}."
-                self.status_color = RED
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup(f"Payment cannot exceed balance of ${self.game.player.credit_card.balance:.2f}.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
             
             self.make_payment(amount)
             self.amount_input.text = ""  # Clear input after successful payment
         except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Invalid Input", "Please enter a valid number.", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def make_payment(self, amount):
         """Make a payment using available funds."""
@@ -1085,36 +1124,46 @@ class PayCreditCardScreen(Screen):
         if self.game.player.cash >= amount:
             self.game.player.cash -= amount
             self.game.player.credit_card.pay(amount)
-            self.status_message = f"Payment of ${amount:.2f} made successfully from cash."
-            self.status_color = GREEN
-            
+
             # Update credit score for on-time payment
             self.game.player.credit_score += 2
             
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Payment Successful", f"Payment of ${amount:.2f} made successfully from cash.", on_ok=lambda: setattr(self, 'modal_popup', None))
+
         # Try to pay from bank account
         elif self.game.player.bank_account and self.game.player.bank_account.balance >= amount:
             self.game.player.bank_account.withdraw(amount)
             self.game.player.credit_card.pay(amount)
-            self.status_message = f"Payment of ${amount:.2f} made successfully from bank account."
-            self.status_color = GREEN
-            
+
             # Update credit score for on-time payment
             self.game.player.credit_score += 2
             
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Payment Successful", f"Payment of ${amount:.2f} made successfully from bank account.", on_ok=lambda: setattr(self, 'modal_popup', None))
+
         else:
             available_funds = self.game.player.cash
             if self.game.player.bank_account:
                 available_funds += self.game.player.bank_account.balance
             
-            self.status_message = f"Insufficient funds. You have ${available_funds:.2f} available."
-            self.status_color = RED
+            from moneySmarts.ui_helpers import ModalPopup
+            self.modal_popup = ModalPopup("Insufficient Funds", f"Insufficient funds. You have ${available_funds:.2f} available.", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def go_back(self):
-        from moneySmarts.screens.financial_screens import CreditCardDetailsScreen
+        # CreditCardDetailsScreen is defined in this module
         self.game.gui_manager.set_screen(CreditCardDetailsScreen(self.game))
 
     def handle_events(self, events):
         """Handle pygame events."""
+        # If modal present, delegate first
+        if getattr(self, 'modal_popup', None):
+            try:
+                handled = self.modal_popup.handle_events(events)
+            except Exception:
+                handled = False
+            if handled:
+                return
         super().handle_events(events)
         self.amount_input.update(events)
 
@@ -1165,16 +1214,26 @@ class PayCreditCardScreen(Screen):
         
         # Draw amount input
         self.amount_input.draw(surface)
-        
-        # Draw status message
+
+        # If a legacy status_message exists, convert it into a modal
         if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120))
-            surface.blit(status_surface, status_rect)
+            try:
+                from moneySmarts.ui_helpers import ModalPopup
+                self.modal_popup = ModalPopup("Notice", self.status_message, on_ok=lambda: setattr(self, 'modal_popup', None))
+                self.status_message = ""
+            except Exception:
+                pass
 
         # Draw buttons
         for button in self.buttons:
             button.draw(surface)
+
+        # If modal present, draw it on top
+        if getattr(self, 'modal_popup', None):
+            try:
+                self.modal_popup.draw(surface)
+            except Exception:
+                pass
 
 class LoanDetailsScreen(Screen):
     """
@@ -1208,9 +1267,10 @@ class LoanDetailsScreen(Screen):
         )
         
         self.buttons = [back_button, extra_payment_button]
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def make_extra_payment(self):
-        """Navigate to extra payment screen."""
+        """Navigate to the extra payment screen."""
         self.game.gui_manager.set_screen(ExtraLoanPaymentScreen(self.game))
 
     def go_back(self):
@@ -1380,6 +1440,7 @@ class ExtraLoanPaymentScreen(Screen):
             action=self.go_back
         )
         self.buttons.append(back_button)
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def select_loan(self, index):
         """Select a loan for payment."""
@@ -1388,49 +1449,45 @@ class ExtraLoanPaymentScreen(Screen):
 
     def make_payment(self):
         """Make an extra payment on the selected loan."""
+        from moneySmarts.ui_helpers import ModalPopup
         if not self.game.player.loans:
-            self.status_message = "You don't have any loans."
-            self.status_color = RED
+            self.modal_popup = ModalPopup("No Loans", "You don't have any loans.", on_ok=lambda: setattr(self, 'modal_popup', None))
             return
         
         try:
             amount = float(self.amount_input.text)
             if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
+                self.modal_popup = ModalPopup("Invalid Amount", "Please enter a positive amount.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
             
             selected_loan = self.game.player.loans[self.selected_loan_index]
             
             if amount > selected_loan.current_balance:
-                self.status_message = f"Payment cannot exceed loan balance of ${selected_loan.current_balance:.2f}."
-                self.status_color = RED
+                self.modal_popup = ModalPopup("Invalid Amount", f"Payment cannot exceed loan balance of ${selected_loan.current_balance:.2f}.", on_ok=lambda: setattr(self, 'modal_popup', None))
                 return
             
             # Try to pay from cash first
             if self.game.player.cash >= amount:
                 self.game.player.cash -= amount
                 selected_loan.make_payment(amount)
-                self.status_message = f"Payment of ${amount:.2f} made successfully from cash."
-                self.status_color = GREEN
-                
+                self.modal_popup = ModalPopup("Payment Successful", f"Payment of ${amount:.2f} made successfully from cash.", on_ok=lambda: setattr(self, 'modal_popup', None))
+
                 # Check if loan is paid off
                 if selected_loan.current_balance <= 0:
                     self.game.player.loans.remove(selected_loan)
-                    self.status_message += " Loan paid off!"
+                    self.modal_popup = ModalPopup("Loan Paid Off", "Congratulations! You've paid off the loan.", on_ok=lambda: setattr(self, 'modal_popup', None))
                     self.game.player.credit_score += 10  # Credit score boost for paying off loan
                 
             # Try to pay from bank account
             elif self.game.player.bank_account and self.game.player.bank_account.balance >= amount:
                 self.game.player.bank_account.withdraw(amount)
                 selected_loan.make_payment(amount)
-                self.status_message = f"Payment of ${amount:.2f} made successfully from bank account."
-                self.status_color = GREEN
-                
+                self.modal_popup = ModalPopup("Payment Successful", f"Payment of ${amount:.2f} made successfully from bank account.", on_ok=lambda: setattr(self, 'modal_popup', None))
+
                 # Check if loan is paid off
                 if selected_loan.current_balance <= 0:
                     self.game.player.loans.remove(selected_loan)
-                    self.status_message += " Loan paid off!"
+                    self.modal_popup = ModalPopup("Loan Paid Off", "Congratulations! You've paid off the loan.", on_ok=lambda: setattr(self, 'modal_popup', None))
                     self.game.player.credit_score += 10  # Credit score boost for paying off loan
                 
             else:
@@ -1438,19 +1495,17 @@ class ExtraLoanPaymentScreen(Screen):
                 if self.game.player.bank_account:
                     available_funds += self.game.player.bank_account.balance
 
-                self.status_message = f"Insufficient funds. You have ${available_funds:.2f} available."
-                self.status_color = RED
-            
-            # Clear input after successful payment
-            if self.status_color == GREEN:
+                self.modal_popup = ModalPopup("Insufficient Funds", f"Insufficient funds. You have ${available_funds:.2f} available.", on_ok=lambda: setattr(self, 'modal_popup', None))
+
+            # Clear input after successful payment only if modal created
+            if getattr(self, 'modal_popup', None):
                 self.amount_input.text = ""
                 
         except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
+            self.modal_popup = ModalPopup("Invalid Input", "Please enter a valid number.", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def go_back(self):
-        from moneySmarts.screens.financial_screens import LoanDetailsScreen
+        # LoanDetailsScreen is defined in this module
         self.game.gui_manager.set_screen(LoanDetailsScreen(self.game))
 
     def handle_events(self, events):
@@ -1532,10 +1587,32 @@ class ExtraLoanPaymentScreen(Screen):
         
         # Status message
         if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 200))
-            surface.blit(status_surface, status_rect)
-        
+            # Split long messages into multiple lines
+            words = self.status_message.split()
+            lines = []
+            current_line = []
+
+            for word in words:
+                current_line.append(word)
+                if len(' '.join(current_line)) > 50:  # Adjust based on your font size
+                    lines.append(' '.join(current_line[:-1]))
+                    current_line = [current_line[-1]]
+
+            if current_line:
+                lines.append(' '.join(current_line))
+
+            for i, line in enumerate(lines):
+                status_surface = self.text_font.render(line, True, self.status_color)
+                status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 150 + i * 30))
+                surface.blit(status_surface, status_rect)
+
+        # If modal present, draw it on top
+        if getattr(self, 'modal_popup', None):
+            try:
+                self.modal_popup.draw(surface)
+            except Exception:
+                pass
+
         # Draw buttons
         for button in self.buttons:
             button.draw(surface)
@@ -1564,6 +1641,7 @@ class AssetDetailsScreen(Screen):
         )
         
         self.buttons = [back_button]
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def go_back(self):
         from moneySmarts.screens.game_screen import GameScreen
@@ -1732,6 +1810,7 @@ class JobSearchScreen(Screen):
         # Status message
         self.status_message = ""
         self.status_color = BLACK
+        self._background_original = load_ui_background('FINANCIAL_BG')
 
     def generate_job_options(self):
         """Generate job options based on player's education and experience."""
@@ -1816,17 +1895,14 @@ class JobSearchScreen(Screen):
             if old_job:
                 salary_increase = self.game.player.salary - old_salary
                 percent_increase = (salary_increase / old_salary) * 100
-                self.status_message = f"Congratulations! You got the job! That's a raise of ${salary_increase}/year ({percent_increase:.1f}%)!"
+                msg = f"Congratulations! You got the job! That's a raise of ${salary_increase}/year ({percent_increase:.1f}% )!"
             else:
-                self.status_message = f"Congratulations! You got the job! You are now earning ${self.game.player.salary}/year."
-
-            self.status_color = GREEN
-
+                msg = f"Congratulations! You got the job! You are now earning ${self.game.player.salary}/year."
+            self.modal_popup = ModalPopup("Job Offer", msg, on_ok=lambda: setattr(self, 'modal_popup', None))
             # Disable job buttons after getting a job
             self.buttons = [self.buttons[0]]  # Keep only the back button
         else:
-            self.status_message = "Unfortunately, the company decided to go with another candidate. Try again!"
-            self.status_color = RED
+            self.modal_popup = ModalPopup("Application Result", "Unfortunately, the company decided to go with another candidate. Try again!", on_ok=lambda: setattr(self, 'modal_popup', None))
 
     def go_back(self):
         """Go back to the game screen."""
@@ -1836,7 +1912,7 @@ class JobSearchScreen(Screen):
     def draw(self, surface):
         """Draw the job search screen."""
         # Background
-        surface.fill(WHITE)
+        draw_background(surface, self._background_original, default_color=WHITE)
 
         # Title
         title_surface = self.title_font.render("Job Search", True, BLACK)
@@ -1904,243 +1980,6 @@ class JobSearchScreen(Screen):
                 surface.blit(status_surface, status_rect)
 
         # Draw buttons
-        for button in self.buttons:
-            button.draw(surface)
-
-class SavingsDetailsScreen(Screen):
-    """
-    Screen for viewing savings account details.
-    """
-    play_startup_music = False
-    def __init__(self, game):
-        super().__init__(game)
-        self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
-        self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        self.scroll_position = 0
-        self.max_visible_transactions = 10
-        back_button = Button(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT - 80,
-            200, 50,
-            "Back",
-            action=self.go_back
-        )
-        self.buttons = [back_button]
-    def go_back(self):
-        from moneySmarts.screens.game_screen import GameScreen
-        self.game.gui_manager.set_screen(GameScreen(self.game))
-    def draw(self, surface):
-        surface.fill(WHITE)
-        title_surface = self.title_font.render("Savings Account Details", True, BLACK)
-        title_rect = title_surface.get_rect(center=(SCREEN_WIDTH // 2, 50))
-        surface.blit(title_surface, title_rect)
-        account = self.game.player.savings_account
-        info_lines = [
-            f"Current Balance: ${account.balance:.2f}",
-            f"Interest Rate: {account.interest_rate*100:.2f}% annually",
-            f"Projected Annual Interest: ${account.balance * account.interest_rate:.2f}"
-        ]
-        for i, line in enumerate(info_lines):
-            text_surface = self.text_font.render(line, True, BLACK)
-            text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 100 + i * 30))
-            surface.blit(text_surface, text_rect)
-        history_title = self.title_font.render("Transaction History", True, BLACK)
-        history_rect = history_title.get_rect(center=(SCREEN_WIDTH // 2, 250))
-        surface.blit(history_title, history_rect)
-        if account.transaction_history:
-            scroll_area = pygame.Rect(100, 280, SCREEN_WIDTH - 200, 300)
-            pygame.draw.rect(surface, LIGHT_GRAY, scroll_area)
-            pygame.draw.rect(surface, BLACK, scroll_area, 2)
-            visible_transactions = account.transaction_history[
-                self.scroll_position:self.scroll_position + self.max_visible_transactions
-            ]
-            for i, transaction in enumerate(visible_transactions):
-                if transaction["type"] == "deposit":
-                    text = f"Deposit: +${transaction['amount']:.2f}"
-                    color = GREEN
-                elif transaction["type"] == "withdrawal":
-                    text = f"Withdrawal: -${transaction['amount']:.2f}"
-                    color = RED
-                elif transaction["type"] == "interest":
-                    text = f"Interest: +${transaction['amount']:.2f}"
-                    color = BLUE
-                else:
-                    text = f"{transaction['type']}: ${transaction['amount']:.2f}"
-                    color = BLACK
-                text_surface = self.text_font.render(text, True, color)
-                text_rect = text_surface.get_rect(midleft=(120, 300 + i * 30))
-                surface.blit(text_surface, text_rect)
-        else:
-            no_transactions = self.text_font.render("No transactions yet.", True, BLACK)
-            no_transactions_rect = no_transactions.get_rect(center=(SCREEN_WIDTH // 2, 320))
-            surface.blit(no_transactions, no_transactions_rect)
-        for button in self.buttons:
-            button.draw(surface)
-
-class DepositToSavingsScreen(Screen):
-    """
-    Screen for depositing money to savings account.
-    """
-    play_startup_music = False
-    def __init__(self, game):
-        super().__init__(game)
-        self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
-        self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        self.amount_input = TextInput(
-            SCREEN_WIDTH // 2 - 150,
-            SCREEN_HEIGHT // 2,
-            300, 40,
-            font_size=FONT_MEDIUM,
-            max_length=10
-        )
-        deposit_button = Button(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 60,
-            200, 50,
-            "Deposit",
-            action=self.make_deposit
-        )
-        back_button = Button(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 130,
-            200, 50,
-            "Back",
-            action=self.go_back
-        )
-        self.buttons = [deposit_button, back_button]
-        # Status message
-        self.status_message = ""
-        self.status_color = BLACK
-
-    def make_deposit(self):
-        try:
-            amount = float(self.amount_input.text)
-            if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
-                return
-            if amount > self.game.player.cash:
-                self.status_message = "You don't have that much cash."
-                self.status_color = RED
-                return
-            self.game.player.cash -= amount
-            self.game.player.savings_account.deposit(amount)
-            self.status_message = f"Successfully deposited ${amount:.2f}."
-            self.status_color = GREEN
-            self.amount_input.text = ""
-        except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
-
-    def go_back(self):
-        from moneySmarts.screens.game_screen import GameScreen
-        self.game.gui_manager.set_screen(GameScreen(self.game))
-
-    def handle_events(self, events):
-        super().handle_events(events)
-        self.amount_input.update(events)
-
-    def draw(self, surface):
-        surface.fill(WHITE)
-        title_surface = self.title_font.render("Deposit to Savings", True, BLACK)
-        title_rect = title_surface.get_rect(center=(SCREEN_WIDTH // 2, 80))
-        surface.blit(title_surface, title_rect)
-        info_lines = [
-            f"Your current cash: ${self.game.player.cash:.2f}",
-            f"Your savings balance: ${self.game.player.savings_account.balance:.2f}",
-            "",
-            "How much would you like to deposit?"
-        ]
-        for i, line in enumerate(info_lines):
-            text_surface = self.text_font.render(line, True, BLACK)
-            text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 150 + i * 30))
-            surface.blit(text_surface, text_rect)
-        self.amount_input.draw(surface)
-        if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
-            surface.blit(status_surface, status_rect)
-        for button in self.buttons:
-            button.draw(surface)
-
-class WithdrawFromSavingsScreen(Screen):
-    """
-    Screen for withdrawing money from savings account.
-    """
-    play_startup_music = False
-    def __init__(self, game):
-        super().__init__(game)
-        self.title_font = pygame.font.SysFont('Arial', FONT_LARGE)
-        self.text_font = pygame.font.SysFont('Arial', FONT_MEDIUM)
-        self.amount_input = TextInput(
-            SCREEN_WIDTH // 2 - 150,
-            SCREEN_HEIGHT // 2,
-            300, 40,
-            font_size=FONT_MEDIUM,
-            max_length=10
-        )
-        withdraw_button = Button(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 60,
-            200, 50,
-            "Withdraw",
-            action=self.make_withdrawal
-        )
-        back_button = Button(
-            SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 130,
-            200, 50,
-            "Back",
-            action=self.go_back
-        )
-        self.buttons = [withdraw_button, back_button]
-        self.status_message = ""
-        self.status_color = BLACK
-    def make_withdrawal(self):
-        try:
-            amount = float(self.amount_input.text)
-            if amount <= 0:
-                self.status_message = "Please enter a positive amount."
-                self.status_color = RED
-                return
-            if amount > self.game.player.savings_account.balance:
-                self.status_message = "You don't have that much in your savings account."
-                self.status_color = RED
-                return
-            self.game.player.savings_account.withdraw(amount)
-            self.game.player.cash += amount
-            self.status_message = f"Successfully withdrew ${amount:.2f}."
-            self.status_color = GREEN
-            self.amount_input.text = ""
-        except ValueError:
-            self.status_message = "Please enter a valid number."
-            self.status_color = RED
-    def go_back(self):
-        from moneySmarts.screens.game_screen import GameScreen
-        self.game.gui_manager.set_screen(GameScreen(self.game))
-    def handle_events(self, events):
-        super().handle_events(events)
-        self.amount_input.update(events)
-    def draw(self, surface):
-        surface.fill(WHITE)
-        title_surface = self.title_font.render("Withdraw from Savings", True, BLACK)
-        title_rect = title_surface.get_rect(center=(SCREEN_WIDTH // 2, 80))
-        surface.blit(title_surface, title_rect)
-        info_lines = [
-            f"Your current cash: ${self.game.player.cash:.2f}",
-            f"Your savings balance: ${self.game.player.savings_account.balance:.2f}",
-            "",
-            "How much would you like to withdraw?"
-        ]
-        for i, line in enumerate(info_lines):
-            text_surface = self.text_font.render(line, True, BLACK)
-            text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 150 + i * 30))
-            surface.blit(text_surface, text_rect)
-        self.amount_input.draw(surface)
-        if self.status_message:
-            status_surface = self.text_font.render(self.status_message, True, self.status_color)
-            status_rect = status_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
-            surface.blit(status_surface, status_rect)
         for button in self.buttons:
             button.draw(surface)
 

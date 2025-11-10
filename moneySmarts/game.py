@@ -995,6 +995,22 @@ class Game:
 
     # --- Control ---
     def quit(self):
+        # Prefer to return to the main menu when running under the GUI.
+        try:
+            if getattr(self, 'gui_manager', None):
+                # Clear current player state so TitleScreen shows new-game flow
+                self.player = None
+                from moneySmarts.screens.base_screens import TitleScreen
+                try:
+                    self.gui_manager.set_screen(TitleScreen(self))
+                    # keep the GUI loop running
+                    return
+                except Exception:
+                    # Fall through and stop the GUI if we cannot restore title screen
+                    pass
+        except Exception:
+            pass
+        # Fallback: mark game over and stop loop
         self.game_over = True
         if self.gui_manager:
             self.gui_manager.running = False
