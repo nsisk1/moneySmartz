@@ -6,6 +6,8 @@ from moneySmarts.screens.financial_screens import DepositScreen, WithdrawScreen,
 import os
 from moneySmarts.models import BankAccount  # added import
 
+
+# noinspection PyCompatibility
 class BankScreen(Screen):
     """
     Main bank screen with banking options and buttons.
